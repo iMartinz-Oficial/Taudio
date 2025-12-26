@@ -60,12 +60,10 @@ const AppContent = () => {
         updateDoc({ progress: prog });
       }, 400);
 
-      // LLAMADA DIRECTA A GENERAR VOZ
       const base64 = await generateSpeech(content, voice);
-      
       clearInterval(intervalId);
       
-      if (!base64) throw new Error("Fallo en la conexión de audio");
+      if (!base64) throw new Error("Fallo en la conexión");
 
       const pcmData = decodeBase64Audio(base64);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -73,8 +71,7 @@ const AppContent = () => {
       
       const sizeMB = (wavBlob.size / (1024 * 1024)).toFixed(1);
       
-      const updatedDoc: Document = {
-        ...(documents.find(d => d.id === id)!),
+      updateDoc({
         status: 'ready',
         progress: 100,
         meta: `Listo • ${sizeMB} MB`,
@@ -83,16 +80,14 @@ const AppContent = () => {
         bgColor: 'bg-green-500/10',
         audioSize: `${sizeMB} MB`,
         voice
-      };
+      });
 
-      setDocuments(prev => prev.map(d => d.id === id ? updatedDoc : d));
-      // No navegamos automáticamente para dejar que el usuario vea que se completó
     } catch (err) {
       if (intervalId) clearInterval(intervalId);
-      console.error("Error procesando audio:", err);
+      console.error("Error en audio:", err);
       updateDoc({ 
         status: 'error', 
-        meta: 'Error de audio. Toca para reintentar.', 
+        meta: 'Fallo de audio. Toca para reintentar.', 
         progress: 0,
         icon: 'error',
         iconColor: 'text-red-500',
@@ -104,42 +99,32 @@ const AppContent = () => {
   const handleAddDocument = async (payload: { title?: string; content?: string; file?: { base64: string, mime: string }; voice: VoiceName }) => {
     const id = Date.now();
     let content = payload.content || "";
-    const title = payload.title || "Nuevo Documento";
+    const title = payload.title || "Nuevo Taudio";
 
-    // Si hay archivo, extraemos texto primero
-    if (payload.file && !content) {
-      setDocuments(prev => [{
-        id, title, content: "", meta: "Extrayendo texto...", status: 'analyzing', progress: 50,
-        icon: 'sync', iconColor: 'text-primary', bgColor: 'bg-primary/10', voice: payload.voice
-      }, ...prev]);
-      
-      content = await extractTextFromFile(payload.file.base64, payload.file.mime);
-      if (!content) {
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: 'error', meta: 'No se pudo leer el archivo.' } : d));
-        return;
-      }
-    }
-
-    const newDoc: Document = {
+    const initialDoc: Document = {
       id,
       title,
       content,
-      meta: "Iniciando...",
-      progress: 0,
+      meta: "Procesando...",
+      progress: 20,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
       icon: "sync",
       status: 'analyzing',
       voice: payload.voice
     };
-    
-    setDocuments(prev => {
-        const exists = prev.find(d => d.id === id);
-        if (exists) {
-            return prev.map(d => d.id === id ? newDoc : d);
-        }
-        return [newDoc, ...prev];
-    });
+
+    setDocuments(prev => [initialDoc, ...prev]);
+
+    // Si hay archivo, extraemos texto primero
+    if (payload.file && !content) {
+      content = await extractTextFromFile(payload.file.base64, payload.file.mime);
+      if (!content) {
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: 'error', meta: 'Error leyendo archivo.' } : d));
+        return;
+      }
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, content } : d));
+    }
 
     processAudioOnly(id, content, payload.voice);
   };

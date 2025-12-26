@@ -16,21 +16,21 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
   try {
     const ai = getAI();
     
-    // Limpieza del texto para el modelo TTS
+    // Limpieza y preparación del texto para el modelo TTS
     const cleanText = text
       .substring(0, 3000)
       .replace(/[#*`_]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
-    if (!cleanText) {
-      console.warn("Texto vacío enviado a TTS");
-      return undefined;
-    }
+    if (!cleanText) return undefined;
+
+    // Usamos un prefijo para que el modelo identifique la tarea de voz claramente
+    const prompt = `Read this text clearly: ${cleanText}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: cleanText }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -42,19 +42,15 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
     });
 
     const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioBase64) {
-      console.error("La respuesta de Gemini no contiene datos de audio.");
-      return undefined;
-    }
     return audioBase64;
   } catch (error) {
-    console.error("Error crítico en la conexión de generación de voz:", error);
+    console.error("Error crítico en la conexión TTS:", error);
     return undefined;
   }
 };
 
 /**
- * Extrae texto de archivos.
+ * Extrae texto de archivos de forma directa sin generar resúmenes ni títulos.
  */
 export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
   const ai = getAI();
@@ -64,13 +60,13 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: "Extrae el texto de este documento. Devuelve solo el texto extraído sin comentarios adicionales." }
+          { text: "Extract the full text from this document. Only the text, no extra comments." }
         ]
       }
     });
     return response.text || "";
   } catch (error) {
-    console.error("Error extrayendo texto del archivo:", error);
+    console.error("Error extrayendo texto:", error);
     return "";
   }
 };
@@ -108,33 +104,20 @@ export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): 
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
   
-  // RIFF identifier
   view.setUint32(0, 0x52494646, false);
-  // RIFF chunk length
   view.setUint32(4, 36 + pcmData.length, true);
-  // RIFF type
   view.setUint32(8, 0x57415645, false);
-  // format chunk identifier
   view.setUint32(12, 0x666d7420, false);
-  // format chunk length
   view.setUint32(16, 16, true);
-  // sample format (raw)
   view.setUint16(20, 1, true);
-  // channel count
   view.setUint16(22, 1, true);
-  // sample rate
   view.setUint32(24, sampleRate, true);
-  // byte rate (sample rate * block align)
   view.setUint32(28, sampleRate * 2, true);
-  // block align (channel count * bytes per sample)
   view.setUint16(32, 2, true);
-  // bits per sample
   view.setUint16(34, 16, true);
-  // data chunk identifier
   view.setUint32(36, 0x64617461, false);
-  // data chunk length
   view.setUint32(40, pcmData.length, true);
 
-  // Solucionar error de tipo TS mediante cast a any o ArrayBufferView
+  // El casteo a any evita el error de tipos TS entre Uint8Array y BlobPart
   return new Blob([header, pcmData as any], { type: 'audio/wav' });
 };
