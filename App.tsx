@@ -81,8 +81,7 @@ const AppContent = () => {
     setFolderState('unlinked');
   };
 
-  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string) => {
-    // Verificar o solicitar carpeta antes de empezar
+  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string, fileData?: { base64: string, mime: string }) => {
     if (folderState !== 'granted') {
       try {
         const handle = await getFolderHandle();
@@ -96,9 +95,7 @@ const AppContent = () => {
           await saveFolderHandle(newHandle);
           setFolderState('granted');
         }
-      } catch(e) { 
-        return; 
-      }
+      } catch(e) { return; }
     }
 
     const updateDoc = (updates: Partial<Document>) => {
@@ -106,12 +103,21 @@ const AppContent = () => {
     };
 
     try {
-      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 10 });
-      const result = await generateSpeech(content, voice);
+      let finalContent = content;
       
-      if (result.error) {
-        throw new Error(result.error);
+      // Si hay un archivo y no hay contenido manual, extraemos el texto primero
+      if (fileData && !content) {
+        updateDoc({ status: 'analyzing', meta: 'Extrayendo texto...', progress: 20 });
+        const extraction = await extractTextFromFile(fileData.base64, fileData.mime);
+        if (extraction.error) throw new Error(extraction.error);
+        finalContent = extraction.text || "";
+        updateDoc({ content: finalContent });
       }
+
+      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 40 });
+      const result = await generateSpeech(finalContent, voice);
+      
+      if (result.error) throw new Error(result.error);
 
       const pcmData = decodeBase64Audio(result.data!);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -129,7 +135,6 @@ const AppContent = () => {
         voice
       });
     } catch (err: any) {
-      console.error("Error en processAudio:", err);
       updateDoc({ 
         status: 'error', 
         meta: err.message || 'Error inesperado', 
@@ -171,18 +176,26 @@ const AppContent = () => {
                 setCurrentDocument(doc); 
                 navigate('/player'); 
               } else {
-                // Si es error o analizando, intenta reprocesar
                 processAudioOnly(doc.id, doc.content || "", doc.voice || 'Zephyr', doc.title);
               }
             }} 
             onAddDocument={async (payload) => {
               const id = Date.now();
+              const isFile = !!payload.file;
               const initialDoc: Document = {
-                id, title: payload.title || "Nuevo", content: payload.content, meta: "Preparando...", progress: 5,
-                iconColor: "text-primary", bgColor: "bg-primary/10", icon: "sync", status: 'generating', voice: payload.voice
+                id, 
+                title: payload.title || (isFile ? payload.file!.name : "Nuevo"), 
+                content: payload.content, 
+                meta: isFile ? "Extrayendo..." : "Preparando...", 
+                progress: 5,
+                iconColor: isFile ? "text-blue-500" : "text-primary", 
+                bgColor: isFile ? "bg-blue-500/10" : "bg-primary/10", 
+                icon: isFile ? "description" : "article", 
+                status: isFile ? 'analyzing' : 'generating', 
+                voice: payload.voice
               };
               setDocuments(prev => [initialDoc, ...prev]);
-              processAudioOnly(id, payload.content || "", payload.voice, payload.title || "Nuevo");
+              processAudioOnly(id, payload.content || "", payload.voice, initialDoc.title, payload.file);
             }}
             onDeleteDocument={async (id) => {
               setDocuments(prev => prev.filter(d => d.id !== id));

@@ -8,7 +8,7 @@ interface LibraryScreenProps {
   onLinkFolder: () => void;
   onGrantPermission: () => void;
   onSelectDocument: (doc: Document) => void;
-  onAddDocument: (payload: { title?: string; content?: string; voice: VoiceName }) => void;
+  onAddDocument: (payload: { title?: string; content?: string; file?: { base64: string, mime: string }; voice: VoiceName }) => void;
   onDeleteDocument: (id: number) => void;
   onLogout: () => void;
 }
@@ -21,6 +21,45 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [selectedVoice, setSelectedVoice] = useState<VoiceName>('Zephyr');
+  const [selectedFile, setSelectedFile] = useState<{ base64: string, mime: string, name: string } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1];
+      setSelectedFile({
+        base64,
+        mime: file.type || 'application/octet-stream',
+        name: file.name
+      });
+      if (!newTitle) setNewTitle(file.name);
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleGenerate = () => {
+    if (newContent.trim() || selectedFile) {
+      onAddDocument({
+        title: newTitle || (selectedFile ? selectedFile.name : 'Nuevo Audio'),
+        content: newContent,
+        file: selectedFile || undefined,
+        voice: selectedVoice
+      });
+      // Reset
+      setNewContent("");
+      setNewTitle("");
+      setSelectedFile(null);
+      setIsAddModalOpen(false);
+    }
+  };
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark">
@@ -61,10 +100,10 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <div 
               key={doc.id}
               onClick={() => onSelectDocument(doc)}
-              className="group relative bg-white dark:bg-surface-dark p-4 rounded-[28px] border border-transparent hover:border-primary/20 transition-all flex items-center gap-4 shadow-sm active:scale-98"
+              className="group relative bg-white dark:bg-surface-dark p-4 rounded-[28px] border border-transparent hover:border-primary/20 transition-all flex items-center gap-4 shadow-sm active:scale-95"
             >
               <div className={`size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
-                <span className={`material-symbols-outlined text-2xl ${doc.iconColor}`}>{doc.icon}</span>
+                <span className={`material-symbols-outlined text-2xl ${doc.iconColor} ${doc.status === 'generating' ? 'animate-pulse' : ''}`}>{doc.icon}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-[15px] truncate">{doc.title}</h3>
@@ -89,39 +128,83 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
       <button 
         onClick={() => setIsAddModalOpen(true)}
-        className="fixed bottom-10 right-6 size-16 bg-primary text-white rounded-[24px] shadow-2xl shadow-primary/30 flex items-center justify-center active:scale-90 transition-all z-50"
+        className="fixed bottom-28 right-6 size-16 bg-primary text-white rounded-[24px] shadow-2xl shadow-primary/30 flex items-center justify-center active:scale-90 transition-all z-40"
       >
         <span className="material-symbols-outlined text-4xl">add</span>
       </button>
 
+      {/* Navigation Bar */}
+      <nav className="fixed bottom-0 w-full bg-surface-dark/95 backdrop-blur-xl border-t border-white/5 flex h-24 items-center justify-around pb-safe z-30">
+        <button className="flex flex-col items-center gap-1.5 text-primary">
+          <span className="material-symbols-outlined fill-current">home</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Librería</span>
+        </button>
+        <button 
+          onClick={() => documents.length > 0 && onSelectDocument(documents[0])}
+          className="flex flex-col items-center gap-1.5 text-slate-500 hover:text-white transition-colors"
+        >
+          <span className="material-symbols-outlined">play_circle</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Player</span>
+        </button>
+      </nav>
+
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-surface-dark rounded-[40px] p-8 animate-slide-up">
-            <h3 className="text-2xl font-black mb-6">Nuevo Taudio</h3>
+          <div className="w-full max-w-lg bg-white dark:bg-surface-dark rounded-[40px] p-8 animate-slide-up shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black">Nuevo Taudio</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400"><span className="material-symbols-outlined">close</span></button>
+            </div>
+            
             <div className="space-y-4">
               <input 
                 placeholder="Título del audio..." 
-                className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-6 py-4 font-bold outline-none" 
+                className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-6 py-4 font-bold outline-none border-none focus:ring-2 focus:ring-primary/50 transition-all" 
                 value={newTitle} onChange={e => setNewTitle(e.target.value)} 
               />
-              <textarea 
-                placeholder="Pega el texto aquí..." 
-                className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-6 py-4 min-h-[150px] font-medium outline-none" 
-                value={newContent} onChange={e => setNewContent(e.target.value)} 
+              
+              <div className="relative group">
+                <textarea 
+                  placeholder="Escribe o pega el texto aquí..." 
+                  className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-6 py-4 min-h-[120px] font-medium outline-none border-none focus:ring-2 focus:ring-primary/50 transition-all resize-none" 
+                  value={newContent} onChange={e => setNewContent(e.target.value)} 
+                />
+                {!newContent && !selectedFile && (
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-4 right-4 bg-primary/10 text-primary px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-primary/20 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-lg">attach_file</span> Adjuntar Archivo
+                  </button>
+                )}
+              </div>
+
+              {selectedFile && (
+                <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-primary">description</span>
+                    <p className="text-xs font-bold truncate max-w-[200px]">{selectedFile.name}</p>
+                  </div>
+                  <button onClick={() => setSelectedFile(null)} className="text-red-500"><span className="material-symbols-outlined">delete</span></button>
+                </div>
+              )}
+
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                className="hidden" 
+                accept=".pdf,.docx,.txt" 
               />
+
               <div className="flex gap-4 pt-4">
-                <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-4 font-bold text-slate-500">Cancelar</button>
+                <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-4 font-bold text-slate-500 uppercase text-xs tracking-widest">Cancelar</button>
                 <button 
-                  onClick={() => {
-                    if (newContent) {
-                      onAddDocument({ title: newTitle || 'Nuevo Audio', content: newContent, voice: selectedVoice });
-                      setNewContent(""); setNewTitle("");
-                      setIsAddModalOpen(false);
-                    }
-                  }}
-                  className="flex-[2] bg-primary text-white font-bold py-4 rounded-2xl"
+                  disabled={isUploading || (!newContent && !selectedFile)}
+                  onClick={handleGenerate}
+                  className="flex-[2] bg-primary text-white font-bold py-4 rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  Generar
+                  {isUploading ? 'CARGANDO...' : 'GENERAR AUDIO'}
                 </button>
               </div>
             </div>
