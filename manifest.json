@@ -1,0 +1,19 @@
+
+{
+  "name": "VozLibro TTS",
+  "short_name": "VozLibro",
+  "description": "Tu biblioteca personal con voz de IA",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#101922",
+  "theme_color": "#137fec",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3706/3706911.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}

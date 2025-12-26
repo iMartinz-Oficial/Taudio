@@ -1,0 +1,7 @@
+{
+  "name": "VozLibro - Biblioteca de Audio TTS",
+  "description": "Una aplicación avanzada de lectura de documentos que utiliza la API de Gemini para convertir texto en voz natural de alta calidad.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
