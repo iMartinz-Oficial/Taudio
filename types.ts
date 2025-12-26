@@ -4,6 +4,8 @@ export interface User {
   isLoggedIn: boolean;
 }
 
+export type VoiceMode = 'AI' | 'SYSTEM';
+
 export interface Document {
   id: number;
   title: string;
@@ -16,9 +18,10 @@ export interface Document {
   audioSize?: string;
   status: 'analyzing' | 'generating' | 'ready' | 'error';
   voice?: VoiceName;
+  voiceMode: VoiceMode;
 }
 
-export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
+export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr' | 'System';
 
 export interface FilePayload {
   base64: string;

@@ -10,8 +10,9 @@ export const INITIAL_DOCUMENTS: Document[] = [
         iconColor: "text-red-600 dark:text-red-400",
         bgColor: "bg-red-100 dark:bg-red-900/20",
         icon: "picture_as_pdf",
-        // Add missing status property
+        // Fix: Add missing voiceMode and status properties
         status: 'ready',
+        voiceMode: 'AI',
         content: "En mis años de mozo y más vulnerable, mi padre me dio un consejo que desde entonces no ha dejado de darme vueltas en la cabeza. Siempre que te sientas inclinado a criticar a alguien —me dijo—, ten presente que no todo el mundo ha tenido las ventajas que tú tuviste."
     },
     {
@@ -22,8 +23,9 @@ export const INITIAL_DOCUMENTS: Document[] = [
         iconColor: "text-blue-600 dark:text-blue-400",
         bgColor: "bg-blue-100 dark:bg-blue-900/20",
         icon: "description",
-        // Add missing status property
+        // Fix: Add missing voiceMode and status properties
         status: 'ready',
+        voiceMode: 'AI',
         content: "El objetivo de este proyecto es implementar una red neuronal convolucional para la detección temprana de anomalías en imágenes satelitales."
     },
     {
@@ -34,8 +36,9 @@ export const INITIAL_DOCUMENTS: Document[] = [
         iconColor: "text-slate-600 dark:text-slate-400",
         bgColor: "bg-slate-200 dark:bg-slate-800",
         icon: "article",
-        // Add missing status property
+        // Fix: Add missing voiceMode and status properties
         status: 'ready',
+        voiceMode: 'AI',
         content: "La Revolución Francesa fue un conflicto social y político, con diversos periodos de violencia, que convulsionó Francia y, por extensión de sus implicaciones, a otras naciones de Europa que enfrentaban a partidarios y opositores del sistema conocido como el Antiguo Régimen."
     }
 ];

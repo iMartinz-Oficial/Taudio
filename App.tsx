@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Document, VoiceName, FilePayload } from './types';
+import { Document, VoiceName, FilePayload, VoiceMode } from './types';
 import { INITIAL_DOCUMENTS } from './constants';
 import LibraryScreen from './components/LibraryScreen';
 import PlayerScreen from './components/PlayerScreen';
@@ -21,9 +21,11 @@ const AppContent = () => {
 
   const syncLibrary = useCallback(async () => {
     const saved = localStorage.getItem('taudio_docs');
-    const baseDocs = saved ? JSON.parse(saved) : INITIAL_DOCUMENTS;
+    const baseDocs = saved ? JSON.parse(saved) : (INITIAL_DOCUMENTS.map(d => ({...d, voiceMode: 'AI' as VoiceMode})));
     
     const updatedDocs = await Promise.all(baseDocs.map(async (doc: Document) => {
+      if (doc.voiceMode === 'SYSTEM') return { ...doc, status: 'ready' as const, progress: 100 };
+      
       try {
         const audio = await getAudio(doc.id, doc.title);
         if (audio) {
@@ -79,35 +81,16 @@ const AppContent = () => {
       await saveFolderHandle(handle);
       setFolderState('granted');
       await syncLibrary();
-    } catch (e) {
-      console.warn("Carpeta no vinculada en login, se pedirá luego.");
-    }
+    } catch (e) {}
   };
 
   const handleLogout = () => {
     localStorage.removeItem('taudio_user');
     localStorage.removeItem('taudio_current_doc');
     setUser(null);
-    setFolderState('unlinked');
   };
 
-  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string, fileData?: FilePayload) => {
-    if (folderState !== 'granted') {
-      try {
-        const handle = await getFolderHandle();
-        if (handle) {
-          const granted = await requestFolderPermission(handle);
-          if (granted) setFolderState('granted');
-          else throw new Error("PERM_DENIED");
-        } else {
-          // @ts-ignore
-          const newHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-          await saveFolderHandle(newHandle);
-          setFolderState('granted');
-        }
-      } catch(e) { return; }
-    }
-
+  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string, voiceMode: VoiceMode, fileData?: FilePayload) => {
     const updateDoc = (updates: Partial<Document>) => {
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
       if (currentDocument?.id === id) {
@@ -118,6 +101,7 @@ const AppContent = () => {
     try {
       let finalContent = content;
       
+      // Si hay archivo, extraer texto siempre (esto usa Gemini Flash, que tiene más cuota que TTS)
       if (fileData && !content) {
         updateDoc({ status: 'analyzing', meta: 'Extrayendo texto...', progress: 20 });
         const extraction = await extractTextFromFile(fileData.base64, fileData.mime);
@@ -126,10 +110,31 @@ const AppContent = () => {
         updateDoc({ content: finalContent });
       }
 
-      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 40 });
-      const result = await generateSpeech(finalContent, voice);
+      if (voiceMode === 'SYSTEM') {
+        updateDoc({ status: 'ready', progress: 100, meta: 'Voz de Sistema' });
+        return;
+      }
+
+      // Proceso de Voz IA
+      updateDoc({ status: 'generating', meta: 'Generando voz IA...', progress: 40 });
+      const result = await generateSpeech(finalContent, voice === 'System' ? 'Zephyr' : voice);
       
-      if (result.error) throw new Error(result.error);
+      if (result.error) {
+        // FALLBACK AUTOMÁTICO AL SISTEMA SI HAY ERROR DE CUOTA
+        if (result.errorCode === 'QUOTA_EXCEEDED') {
+          updateDoc({ 
+            voiceMode: 'SYSTEM', 
+            status: 'ready', 
+            progress: 100, 
+            meta: 'Voz Sistema (Cuota IA Agotada)',
+            icon: 'campaign',
+            iconColor: 'text-green-500',
+            bgColor: 'bg-green-500/10'
+          });
+          return;
+        }
+        throw new Error(result.error);
+      }
 
       const pcmData = decodeBase64Audio(result.data!);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -143,8 +148,7 @@ const AppContent = () => {
         icon: 'play_circle',
         iconColor: 'text-green-500',
         bgColor: 'bg-green-500/10',
-        audioSize: `${sizeMB} MB`,
-        voice
+        audioSize: `${sizeMB} MB`
       });
     } catch (err: any) {
       updateDoc({ 
@@ -189,7 +193,7 @@ const AppContent = () => {
                 setCurrentDocument(doc); 
                 navigate('/player'); 
               } else {
-                processAudioOnly(doc.id, doc.content || "", doc.voice || 'Zephyr', doc.title);
+                processAudioOnly(doc.id, doc.content || "", doc.voice || 'Zephyr', doc.title, doc.voiceMode, undefined);
               }
             }} 
             onAddDocument={async (payload) => {
@@ -201,14 +205,15 @@ const AppContent = () => {
                 content: payload.content, 
                 meta: isFile ? "Extrayendo..." : "Preparando...", 
                 progress: 5,
-                iconColor: isFile ? "text-blue-500" : "text-primary", 
-                bgColor: isFile ? "bg-blue-500/10" : "bg-primary/10", 
+                iconColor: payload.voiceMode === 'SYSTEM' ? "text-green-500" : (isFile ? "text-blue-500" : "text-primary"), 
+                bgColor: payload.voiceMode === 'SYSTEM' ? "bg-green-500/10" : (isFile ? "bg-blue-500/10" : "bg-primary/10"), 
                 icon: isFile ? "description" : "article", 
                 status: isFile ? 'analyzing' : 'generating', 
-                voice: payload.voice
+                voice: payload.voice,
+                voiceMode: payload.voiceMode
               };
               setDocuments(prev => [initialDoc, ...prev]);
-              processAudioOnly(id, payload.content || "", payload.voice, initialDoc.title, payload.file);
+              processAudioOnly(id, payload.content || "", payload.voice, initialDoc.title, payload.voiceMode, payload.file);
             }}
             onDeleteDocument={async (id) => {
               if (currentDocument?.id === id) setCurrentDocument(null);
@@ -216,14 +221,10 @@ const AppContent = () => {
               await deleteAudio(id);
             }}
             onLogout={handleLogout}
-            onGoToPlayer={() => {
-              if (currentDocument) navigate('/player');
-            }}
+            onGoToPlayer={() => { if (currentDocument) navigate('/player'); }}
           />
         } />
-        <Route path="/player" element={
-          <PlayerScreen document={currentDocument} />
-        } />
+        <Route path="/player" element={<PlayerScreen document={currentDocument} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>

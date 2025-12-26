@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Document, VoiceName, FilePayload } from '../types';
+import { Document, VoiceName, FilePayload, VoiceMode } from '../types';
 
 interface LibraryScreenProps {
   documents: Document[];
@@ -9,7 +9,7 @@ interface LibraryScreenProps {
   onLinkFolder: () => void;
   onGrantPermission: () => void;
   onSelectDocument: (doc: Document) => void;
-  onAddDocument: (payload: { title?: string; content?: string; file?: FilePayload; voice: VoiceName }) => void;
+  onAddDocument: (payload: { title?: string; content?: string; file?: FilePayload; voice: VoiceName; voiceMode: VoiceMode }) => void;
   onDeleteDocument: (id: number) => void;
   onLogout: () => void;
   onGoToPlayer: () => void;
@@ -23,6 +23,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [selectedVoice, setSelectedVoice] = useState<VoiceName>('Zephyr');
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('AI');
   const [selectedFile, setSelectedFile] = useState<FilePayload | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -53,7 +54,8 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
         title: newTitle || (selectedFile ? selectedFile.name : 'Nuevo Audio'),
         content: newContent,
         file: selectedFile || undefined,
-        voice: selectedVoice
+        voice: voiceMode === 'SYSTEM' ? 'System' : selectedVoice,
+        voiceMode
       });
       // Reset
       setNewContent("");
@@ -105,11 +107,15 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
               className={`group relative bg-white dark:bg-surface-dark p-4 rounded-[28px] border-2 ${currentDocument?.id === doc.id ? 'border-primary/40' : 'border-transparent'} hover:border-primary/20 transition-all flex items-center gap-4 shadow-sm active:scale-95`}
             >
               <div className={`size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
-                <span className={`material-symbols-outlined text-2xl ${doc.iconColor} ${doc.status === 'generating' || doc.status === 'analyzing' ? 'animate-pulse' : ''}`}>{doc.icon}</span>
+                <span className={`material-symbols-outlined text-2xl ${doc.iconColor} ${doc.status === 'generating' || doc.status === 'analyzing' ? 'animate-pulse' : ''}`}>
+                  {doc.voiceMode === 'SYSTEM' ? 'campaign' : doc.icon}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-[15px] truncate">{doc.title}</h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase">{doc.meta}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                  {doc.voiceMode === 'SYSTEM' ? 'Voz de Sistema • Gratis' : doc.meta}
+                </p>
               </div>
               <button 
                 onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }}
@@ -161,6 +167,21 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
             </div>
             
             <div className="space-y-4">
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl mb-4">
+                <button 
+                  onClick={() => setVoiceMode('AI')}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${voiceMode === 'AI' ? 'bg-primary text-white shadow-lg' : 'text-slate-500'}`}
+                >
+                  Voz IA (Gemini)
+                </button>
+                <button 
+                  onClick={() => setVoiceMode('SYSTEM')}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${voiceMode === 'SYSTEM' ? 'bg-green-500 text-white shadow-lg' : 'text-slate-500'}`}
+                >
+                  Voz Sistema (Ilimitada)
+                </button>
+              </div>
+
               <input 
                 placeholder="Título del audio..." 
                 className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-6 py-4 font-bold outline-none border-none focus:ring-2 focus:ring-primary/50 transition-all" 
@@ -212,16 +233,19 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 <button 
                   disabled={isUploading || (!newContent.trim() && !selectedFile)}
                   onClick={handleGenerate}
-                  className="flex-[2] bg-primary text-white font-bold py-4 rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className={`flex-[2] ${voiceMode === 'SYSTEM' ? 'bg-green-500' : 'bg-primary'} text-white font-bold py-4 rounded-2xl shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2`}
                 >
                   {isUploading ? (
                     <>
                       <span className="material-symbols-outlined animate-spin">sync</span>
                       CARGANDO...
                     </>
-                  ) : 'GENERAR AUDIO'}
+                  ) : voiceMode === 'SYSTEM' ? 'PREPARAR LECTURA' : 'GENERAR AUDIO IA'}
                 </button>
               </div>
+              {voiceMode === 'AI' && (
+                <p className="text-[9px] text-center text-slate-500 font-medium">Nota: La Voz IA utiliza créditos de API que pueden agotarse.</p>
+              )}
             </div>
           </div>
         </div>
