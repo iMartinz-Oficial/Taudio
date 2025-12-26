@@ -5,6 +5,7 @@ import { VoiceName } from "../types";
 const getAI = () => {
   // @ts-ignore
   const apiKey = process.env.API_KEY as string;
+  if (!apiKey) throw new Error("API Key no configurada");
   return new GoogleGenAI({ apiKey });
 };
 
@@ -13,13 +14,12 @@ export const generateTitleAndSummary = async (content: string): Promise<{ title:
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analiza este texto y genera un título corto y atractivo (máximo 5 palabras). Devuelve solo el título, nada más: ${content.substring(0, 2000)}`,
+      contents: `Genera un título muy corto (3-5 palabras) para este texto: ${content.substring(0, 500)}. Responde solo con el título.`,
     });
-    const text = response.text;
-    return { title: text?.trim() || "Documento sin título" };
+    return { title: response.text?.trim().replace(/[*"']/g, '') || "Documento" };
   } catch (error) {
-    console.error("Error generating title:", error);
-    return { title: "Nuevo Documento" };
+    console.error("Error en título:", error);
+    return { title: "Nuevo Taudio" };
   }
 };
 
@@ -31,26 +31,33 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: "Extrae todo el texto de este documento de forma literal. Devuelve solo el texto extraído." }
+          { text: "Extrae el texto completo de este archivo de forma fiel." }
         ]
       }
     });
     return response.text || "";
   } catch (error) {
-    console.error("Error extracting text:", error);
+    console.error("Error en extracción:", error);
     throw error;
   }
 };
 
 export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
   const ai = getAI();
-  // Limpiar el texto de caracteres especiales que puedan confundir al lector
-  const cleanText = text.substring(0, 5000).replace(/[*_#]/g, '');
   
+  // El modelo TTS requiere texto limpio y no demasiado largo en una sola tanda
+  const cleanText = text
+    .substring(0, 4000) // Límite de seguridad por petición
+    .replace(/[\r\n]+/g, ' ') // Eliminar saltos de línea bruscos
+    .replace(/[^\w\s.,!?;:áéíóúÁÉÍÓÚñÑ]/g, '') // Mantener solo caracteres básicos y españoles
+    .trim();
+
+  if (!cleanText) return undefined;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Lee el siguiente texto con naturalidad: ${cleanText}` }] }],
+      contents: [{ parts: [{ text: cleanText }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -61,9 +68,14 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
       },
     });
 
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+      console.error("API respondió sin datos de audio");
+      return undefined;
+    }
+    return audioData;
   } catch (error) {
-    console.error("Error crítico en conexión de audio:", error);
+    console.error("Error en conexión TTS:", error);
     return undefined;
   }
 };

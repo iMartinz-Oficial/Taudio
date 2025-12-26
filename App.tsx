@@ -47,23 +47,29 @@ const AppContent = () => {
     }
   }, [documents]);
 
-  const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
+  // Esta función ahora es inteligente: solo hace lo que falta
+  const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, initialContent?: string, initialTitle?: string) => {
     let intervalId: any = null;
-    
+    let finalContent = initialContent || "";
+    let finalTitle = initialTitle || "Documento";
+
+    const updateDoc = (updates: Partial<Document>) => {
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    };
+
     const runStage = async (label: string, status: 'analyzing' | 'generating', speed: number, action: () => Promise<any>) => {
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: label, status, progress: 0 } : d));
-      
+      updateDoc({ meta: label, status, progress: 0 });
       let stepProgress = 0;
       intervalId = setInterval(() => {
-        stepProgress = Math.min(97, stepProgress + (Math.random() * speed));
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: stepProgress } : d));
-      }, 350);
+        stepProgress = Math.min(98, stepProgress + (Math.random() * speed));
+        updateDoc({ progress: stepProgress });
+      }, 300);
 
       try {
         const result = await action();
         clearInterval(intervalId);
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: 100 } : d));
-        await new Promise(r => setTimeout(r, 200));
+        updateDoc({ progress: 100 });
+        await new Promise(r => setTimeout(r, 150));
         return result;
       } catch (error) {
         clearInterval(intervalId);
@@ -72,27 +78,29 @@ const AppContent = () => {
     };
 
     try {
-      let finalContent = rawContent || "";
-      let finalTitle = "Documento";
-      
-      if (fileData) {
-        finalContent = await runStage("Extrayendo texto...", 'analyzing', 18, () => 
+      // 1. EXTRACCIÓN (Solo si hay archivo y no hay contenido previo)
+      if (fileData && !finalContent) {
+        finalContent = await runStage("Extrayendo texto...", 'analyzing', 15, () => 
           extractTextFromFile(fileData.base64, fileData.mime)
         );
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent } : d));
+        updateDoc({ content: finalContent });
       }
 
-      const titleResult = await runStage("Analizando...", 'analyzing', 25, () => 
-        generateTitleAndSummary(finalContent)
-      );
-      finalTitle = titleResult.title;
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: finalTitle } : d));
+      // 2. TÍTULO (Solo si no hay título válido o es el genérico inicial)
+      if (!finalTitle || finalTitle === "Procesando..." || finalTitle === "Documento") {
+        const titleRes = await runStage("Analizando...", 'analyzing', 20, () => 
+          generateTitleAndSummary(finalContent)
+        );
+        finalTitle = titleRes.title;
+        updateDoc({ title: finalTitle });
+      }
 
-      const base64 = await runStage("Generando voz...", 'generating', 6, () => 
+      // 3. GENERACIÓN DE VOZ (Siempre si llegamos aquí y no está 'ready')
+      const base64 = await runStage("Generando voz...", 'generating', 5, () => 
         generateSpeech(finalContent, voice)
       );
       
-      if (!base64) throw new Error("La conexión de audio falló");
+      if (!base64) throw new Error("La API de voz no devolvió datos");
 
       const pcmData = decodeBase64Audio(base64);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -116,23 +124,20 @@ const AppContent = () => {
 
       setDocuments(prev => prev.map(d => d.id === id ? finalDoc : d));
       
-      // AUTO-REPRODUCCIÓN AL TERMINAR
+      // Auto-reproducción si el usuario sigue esperando
       setCurrentDocument(finalDoc);
-      setTimeout(() => navigate('/player'), 150);
+      setTimeout(() => navigate('/player'), 200);
 
     } catch (err) {
-      console.error("Error en flujo Taudio:", err);
-      setDocuments(prev => prev.map(d => 
-        d.id === id ? { 
-          ...d, 
-          meta: "Error de conexión. Toca para reintentar", 
-          status: 'error', 
-          icon: 'priority_high', 
-          progress: 0, 
-          iconColor: 'text-red-500', 
-          bgColor: 'bg-red-500/10' 
-        } : d
-      ));
+      console.error("Error en el proceso:", err);
+      updateDoc({ 
+        meta: "Fallo de conexión. Toca para reintentar", 
+        status: 'error', 
+        icon: 'warning', 
+        progress: 0, 
+        iconColor: 'text-red-500', 
+        bgColor: 'bg-red-500/10' 
+      });
     } finally {
       if (intervalId) clearInterval(intervalId);
     }
@@ -154,7 +159,7 @@ const AppContent = () => {
     };
     
     setDocuments(prev => [newDoc, ...prev]);
-    fullAIProcess(id, payload.voice, payload.file, payload.content);
+    fullAIProcess(id, payload.voice, payload.file, payload.content, payload.title);
   };
 
   const handleSelectDocument = (doc: Document) => {
@@ -162,7 +167,8 @@ const AppContent = () => {
       setCurrentDocument(doc);
       navigate('/player');
     } else if (doc.status === 'error') {
-      fullAIProcess(doc.id, doc.voice || 'Zephyr', undefined, doc.content);
+      // REINTENTO INTELIGENTE: Pasa lo que ya tenemos para no repetirlo
+      fullAIProcess(doc.id, doc.voice || 'Zephyr', undefined, doc.content, doc.title);
     }
   };
 
