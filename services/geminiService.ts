@@ -3,12 +3,8 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
 const getAI = () => {
-  // @ts-ignore
-  const apiKey = process.env.API_KEY as string;
-  if (!apiKey || apiKey.trim() === "") {
-    throw new Error("API_KEY_MISSING");
-  }
-  return new GoogleGenAI({ apiKey });
+  // Use process.env.API_KEY directly as required by the Google GenAI SDK coding guidelines
+  return new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 };
 
 /**

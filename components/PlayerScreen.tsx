@@ -17,7 +17,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [hasCachedAudio, setHasCachedAudio] = useState(false);
+  const [hasLocalFile, setHasLocalFile] = useState(false);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -32,47 +32,10 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
       if (savedTime) {
         offsetRef.current = parseFloat(savedTime);
         setCurrentTime(offsetRef.current);
-      } else {
-        offsetRef.current = 0;
-        setCurrentTime(0);
       }
-      getAudio(doc.id).then(blob => setHasCachedAudio(!!blob));
+      getAudio(doc.id, doc.title).then(blob => setHasLocalFile(!!blob));
     }
   }, [doc]);
-
-  useEffect(() => {
-    return () => {
-      stopPlayback(false);
-      if (doc) localStorage.setItem(`taudio_pos_${doc.id}`, offsetRef.current.toString());
-    };
-  }, [doc]);
-
-  const updateProgressBar = useCallback(() => {
-    if (isPlaying && audioContextRef.current) {
-      const playedTime = audioContextRef.current.currentTime - startTimeRef.current;
-      const currentPos = offsetRef.current + playedTime;
-      setCurrentTime(currentPos);
-      
-      if (doc) localStorage.setItem(`taudio_pos_${doc.id}`, currentPos.toString());
-
-      if (currentPos >= duration && duration > 0) {
-        setIsPlaying(false);
-        offsetRef.current = 0;
-        setCurrentTime(0);
-        return;
-      }
-      animationFrameRef.current = requestAnimationFrame(updateProgressBar);
-    }
-  }, [isPlaying, duration, doc]);
-
-  useEffect(() => {
-    if (isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(updateProgressBar);
-    } else {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [isPlaying, updateProgressBar]);
 
   const stopPlayback = (resetOffset = true) => {
     if (sourceNodeRef.current) {
@@ -93,18 +56,12 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
 
   const playFromOffset = (offset: number) => {
     if (!audioBufferRef.current || !audioContextRef.current) return;
-    
-    if (sourceNodeRef.current) {
-      try { sourceNodeRef.current.stop(); } catch(e) {}
-    }
-
+    if (sourceNodeRef.current) { try { sourceNodeRef.current.stop(); } catch(e) {} }
     const source = audioContextRef.current.createBufferSource();
     source.buffer = audioBufferRef.current;
     source.connect(audioContextRef.current.destination);
-    
     startTimeRef.current = audioContextRef.current.currentTime;
     offsetRef.current = offset;
-    
     source.start(0, offset);
     sourceNodeRef.current = source;
     setIsPlaying(true);
@@ -115,64 +72,35 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
       stopPlayback(false);
     } else {
       if (!doc?.content) return;
-      
       try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-        }
+        if (!audioContextRef.current) audioContextRef.current = new AudioContext();
+        if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
 
         if (!audioBufferRef.current) {
           setIsProcessing(true);
-          const cachedBlob = await getAudio(doc.id);
+          const cachedBlob = await getAudio(doc.id, doc.title);
           let buffer: AudioBuffer;
           
           if (cachedBlob) {
             const arrayBuffer = await cachedBlob.arrayBuffer();
             buffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
           } else {
-            // Correctly handle the response from generateSpeech which is an object {data?, error?}
             const result = await generateSpeech(doc.content, doc.voice || 'Zephyr');
             if (result.error) throw new Error(result.error);
-            if (!result.data) throw new Error("No audio data");
-            
-            const pcmData = decodeBase64Audio(result.data);
+            const pcmData = decodeBase64Audio(result.data!);
             buffer = await decodeAudioData(pcmData, audioContextRef.current);
           }
           audioBufferRef.current = buffer;
           setDuration(buffer.duration);
           setIsProcessing(false);
         }
-
         playFromOffset(offsetRef.current);
       } catch (error) {
         console.error("Player error:", error);
         setIsProcessing(false);
+        alert("Error cargando el archivo de la carpeta local.");
       }
     }
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    setCurrentTime(newTime);
-    offsetRef.current = newTime;
-    if (doc) localStorage.setItem(`taudio_pos_${doc.id}`, newTime.toString());
-    
-    if (isPlaying) {
-      playFromOffset(newTime);
-    }
-  };
-
-  const skip = (seconds: number) => {
-    let newTime = currentTime + seconds;
-    if (newTime < 0) newTime = 0;
-    if (newTime > duration) newTime = duration;
-    
-    setCurrentTime(newTime);
-    offsetRef.current = newTime;
-    if (isPlaying) playFromOffset(newTime);
   };
 
   const formatTime = (time: number) => {
@@ -186,78 +114,37 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
   return (
     <div className="relative flex h-full w-full flex-col bg-background-dark text-white overflow-hidden pt-safe pb-safe">
       <div className="flex items-center px-4 py-4 justify-between z-40 bg-background-dark/80 backdrop-blur-md shrink-0">
-        <button onClick={() => navigate('/')} className="size-11 flex items-center justify-center rounded-full bg-white/5 active:scale-90 transition-all">
-          <span className="material-symbols-outlined">keyboard_arrow_down</span>
-        </button>
+        <button onClick={() => navigate('/')} className="size-11 flex items-center justify-center rounded-full bg-white/5"><span className="material-symbols-outlined">keyboard_arrow_down</span></button>
         <div className="text-center flex-1 mx-4">
-          <h2 className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mb-0.5">Reproduciendo</h2>
-          <div className="flex items-center justify-center gap-1">
-            {hasCachedAudio && <span className="material-symbols-outlined text-[14px] text-green-400">offline_pin</span>}
-            <p className="text-xs font-bold text-primary truncate max-w-[150px]">{doc.title}</p>
-          </div>
+          <h2 className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mb-0.5">Reproduciendo desde Carpeta</h2>
+          <p className="text-xs font-bold text-primary truncate max-w-[150px]">{doc.title}</p>
         </div>
-        <button className="size-11 flex items-center justify-center rounded-full bg-white/5">
-          <span className="material-symbols-outlined">more_vert</span>
-        </button>
+        <button className="size-11 flex items-center justify-center rounded-full bg-white/5"><span className="material-symbols-outlined">more_vert</span></button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-8">
-        <div className="w-full max-w-[320px] aspect-square bg-surface-dark rounded-[56px] shadow-2xl p-10 mb-10 relative overflow-hidden flex flex-col shrink-0">
+        <div className="w-full max-w-[320px] aspect-square bg-surface-dark rounded-[56px] shadow-2xl p-10 mb-10 relative overflow-hidden flex flex-col items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent"></div>
-          <div className="relative flex flex-col h-full">
-            <div className="flex items-center gap-3 mb-6">
-               <div className="size-12 rounded-2xl bg-primary/20 flex items-center justify-center">
-                 <span className="material-symbols-outlined text-primary text-3xl">headphones</span>
-               </div>
-               <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] truncate">Taudio Player</p>
-            </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar pt-2 pr-2">
-               <p className="text-gray-400 text-sm leading-relaxed font-light italic opacity-90">"{doc.content?.substring(0, 1000)}..."</p>
-            </div>
-          </div>
+          <span className="material-symbols-outlined text-primary text-6xl mb-4">folder_open</span>
+          <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Acceso Local Activo</p>
         </div>
 
-        <div className="text-center w-full mb-8 shrink-0 px-4">
+        <div className="text-center w-full mb-8">
           <h1 className="text-2xl font-black mb-1 truncate">{doc.title}</h1>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Voz: {AI_VOICES.find(v => v.name === (doc.voice || 'Zephyr'))?.label || 'Voz Personalizada'}</p>
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Voz: {doc.voice || 'Zephyr'}</p>
         </div>
 
         <div className="w-full px-4 mb-8 shrink-0">
-          <input 
-            type="range" 
-            min="0" 
-            max={duration || 100} 
-            value={currentTime} 
-            onChange={handleSeek}
-            className="w-full cursor-pointer"
-          />
+          <input type="range" min="0" max={duration || 100} value={currentTime} readOnly className="w-full" />
           <div className="flex justify-between mt-2">
             <span className="text-[10px] font-bold text-slate-500">{formatTime(currentTime)}</span>
             <span className="text-[10px] font-bold text-slate-500">{formatTime(duration)}</span>
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-8 mb-4 shrink-0">
-          <button onClick={() => skip(-10)} className="text-white/40 hover:text-white transition-colors active:scale-90">
-            <span className="material-symbols-outlined" style={{ fontSize: '38px' }}>replay_10</span>
-          </button>
-          
-          <button 
-            onClick={handlePlayPause}
-            disabled={isProcessing}
-            className="flex items-center justify-center size-24 rounded-[32px] text-white shadow-2xl bg-primary shadow-primary/30 active:scale-90 transition-all"
-          >
-            {isProcessing ? (
-              <span className="material-symbols-outlined animate-spin" style={{ fontSize: '40px' }}>sync</span>
-            ) : (
-              <span className="material-symbols-outlined fill-current" style={{ fontSize: '64px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
-            )}
-          </button>
-
-          <button onClick={() => skip(10)} className="text-white/40 hover:text-white transition-colors active:scale-90">
-            <span className="material-symbols-outlined" style={{ fontSize: '38px' }}>forward_10</span>
-          </button>
-        </div>
+        <button onClick={handlePlayPause} disabled={isProcessing} className="flex items-center justify-center size-24 rounded-[32px] text-white shadow-2xl bg-primary shadow-primary/30 active:scale-90 transition-all">
+          {isProcessing ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '40px' }}>sync</span> : <span className="material-symbols-outlined fill-current" style={{ fontSize: '64px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>}
+        </button>
       </div>
     </div>
   );
