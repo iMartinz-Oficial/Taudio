@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Document } from '../types';
+import { extractTextFromFile } from '../services/geminiService';
 
 interface LibraryScreenProps {
   documents: Document[];
@@ -47,33 +48,45 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setNewTitle(file.name);
     setIsReadingFile(true);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result;
-      if (typeof content === 'string') {
-        setNewContent(content);
+    try {
+      if (file.type === 'text/plain' || file.type === 'text/markdown') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setNewContent(event.target?.result as string);
+          setIsReadingFile(false);
+        };
+        reader.readAsText(file);
       } else {
-        setNewContent("Archivo binario cargado. El contenido no puede mostrarse como texto, pero el archivo ha sido vinculado.");
+        // Para PDFs e Imágenes, usamos Gemini
+        const base64 = await fileToBase64(file);
+        const extractedText = await extractTextFromFile(base64, file.type);
+        setNewContent(extractedText);
+        setIsReadingFile(false);
       }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo procesar el archivo. Asegúrate de que sea un formato compatible.");
       setIsReadingFile(false);
-    };
-
-    reader.onerror = () => {
-      alert("Error al leer el archivo");
-      setIsReadingFile(false);
-    };
-
-    // Intentamos leer como texto. Si es PDF/DOCX real, en un entorno web simple 
-    // se necesitarían librerías adicionales para extraer el texto. 
-    // Por ahora, leemos archivos de texto (.txt, .md, .csv, etc)
-    reader.readAsText(file);
+    }
   };
 
   const triggerFileSelect = () => {
@@ -156,16 +169,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                           <span className="material-symbols-outlined text-[20px]">play_arrow</span>
                           Reproducir ahora
                         </button>
-                        <button className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 flex items-center gap-3">
-                          <span className="material-symbols-outlined text-[20px]">edit</span>
-                          Renombrar
-                        </button>
-                        <button className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 flex items-center gap-3">
-                          <span className="material-symbols-outlined text-[20px]">share</span>
-                          Compartir
-                        </button>
-                        <div className="h-px bg-slate-100 dark:bg-slate-700 mx-4 my-1"></div>
-                        <button onClick={(e) => handleDelete(e, doc.id)} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3">
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(e, doc.id); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3">
                           <span className="material-symbols-outlined text-[20px]">delete</span>
                           Eliminar
                         </button>
@@ -195,58 +199,63 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
               {/* File Upload Section */}
               <div 
                 onClick={triggerFileSelect}
-                className="group cursor-pointer flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl py-6 px-4 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                className={`group cursor-pointer flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl py-6 px-4 hover:border-primary/50 hover:bg-primary/5 transition-all ${isReadingFile ? 'opacity-50 pointer-events-none' : ''}`}
               >
                 <input 
                   type="file" 
                   ref={fileInputRef} 
                   onChange={handleFileChange} 
                   className="hidden" 
-                  accept=".txt,.md,.pdf,.doc,.docx"
+                  accept=".txt,.md,.pdf,.png,.jpg,.jpeg"
                 />
-                <span className="material-symbols-outlined text-4xl text-slate-400 group-hover:text-primary transition-colors mb-2">upload_file</span>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Haz clic para subir un archivo</p>
-                <p className="text-xs text-slate-400 mt-1">Soporta TXT, PDF, DOCX...</p>
+                <span className={`material-symbols-outlined text-4xl text-slate-400 group-hover:text-primary transition-colors mb-2 ${isReadingFile ? 'animate-bounce' : ''}`}>
+                  {isReadingFile ? 'settings_suggest' : 'upload_file'}
+                </span>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {isReadingFile ? 'Analizando documento con IA...' : 'Haz clic para subir un archivo'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Soporta PDF, Imágenes, Texto...</p>
               </div>
 
-              <div className="flex items-center gap-3 my-1">
-                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700"></div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">o escribe manualmente</span>
-                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700"></div>
-              </div>
+              {!isReadingFile && (
+                <>
+                  <div className="flex items-center gap-3 my-1">
+                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700"></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">o escribe</span>
+                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700"></div>
+                  </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Título</label>
-                <input 
-                  autoFocus
-                  required
-                  type="text" 
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Ej: Mi historia favorita.txt"
-                  className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
-                  {isReadingFile ? "Leyendo archivo..." : "Contenido (Texto)"}
-                </label>
-                <textarea 
-                  required
-                  rows={4}
-                  value={newContent}
-                  onChange={(e) => setNewContent(e.target.value)}
-                  placeholder="Pega aquí el texto que quieres que la IA lea por ti..."
-                  className={`w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white resize-none ${isReadingFile ? 'opacity-50 animate-pulse' : ''}`}
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={isReadingFile}
-                className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 hover:bg-blue-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all mt-2"
-              >
-                Añadir a Biblioteca
-              </button>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Título</label>
+                    <input 
+                      autoFocus
+                      required
+                      type="text" 
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="Ej: Apuntes de Historia"
+                      className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Contenido</label>
+                    <textarea 
+                      required
+                      rows={4}
+                      value={newContent}
+                      onChange={(e) => setNewContent(e.target.value)}
+                      placeholder="Contenido del documento..."
+                      className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white resize-none"
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 hover:bg-blue-600 active:scale-[0.98] transition-all mt-2"
+                  >
+                    Guardar Documento
+                  </button>
+                </>
+              )}
             </form>
           </div>
         </div>
@@ -264,22 +273,16 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
       <nav className="fixed bottom-0 w-full bg-background-light dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 pb-safe z-40">
         <div className="flex h-16 items-center justify-around px-2 pb-2">
           <button className="flex flex-1 flex-col items-center justify-center gap-1 group cursor-pointer">
-            <div className="flex items-center justify-center rounded-full px-4 py-1 bg-primary/10 group-hover:bg-primary/20 transition-colors">
+            <div className="flex items-center justify-center rounded-full px-4 py-1 bg-primary/10 transition-colors">
               <span className="material-symbols-outlined text-primary fill-current">home</span>
             </div>
             <span className="text-xs font-medium text-primary">Biblioteca</span>
           </button>
-          <button onClick={() => navigate('/player')} className="flex flex-1 flex-col items-center justify-center gap-1 group cursor-pointer text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-            <div className="flex items-center justify-center rounded-full px-4 py-1 group-hover:bg-black/5 dark:group-hover:bg-white/5 transition-colors">
+          <button onClick={() => navigate('/player')} className="flex flex-1 flex-col items-center justify-center gap-1 group cursor-pointer text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-center rounded-full px-4 py-1 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
               <span className="material-symbols-outlined">play_circle</span>
             </div>
             <span className="text-xs font-medium">Reproductor</span>
-          </button>
-          <button className="flex flex-1 flex-col items-center justify-center gap-1 group cursor-pointer text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-            <div className="flex items-center justify-center rounded-full px-4 py-1 group-hover:bg-black/5 dark:group-hover:bg-white/5 transition-colors">
-              <span className="material-symbols-outlined">settings</span>
-            </div>
-            <span className="text-xs font-medium">Ajustes</span>
           </button>
         </div>
       </nav>

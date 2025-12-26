@@ -2,11 +2,37 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
-export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
+// Helper para obtener la instancia de AI
+const getAI = () => {
   // @ts-ignore
   const apiKey = process.env.API_KEY as string;
-  const ai = new GoogleGenAI({ apiKey });
-  
+  return new GoogleGenAI({ apiKey });
+};
+
+/**
+ * Extrae texto de un archivo (PDF, Imagen) usando Gemini 3 Flash
+ */
+export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
+  const ai = getAI();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{
+        parts: [
+          { inlineData: { data: base64Data, mimeType } },
+          { text: "Extrae todo el texto de este documento. Devuelve solo el texto extraído, sin comentarios adicionales. Si es una imagen con texto, transcríbelo íntegramente." }
+        ]
+      }]
+    });
+    return response.text || "No se pudo extraer texto del documento.";
+  } catch (error) {
+    console.error("Error extracting text:", error);
+    throw error;
+  }
+};
+
+export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
+  const ai = getAI();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
