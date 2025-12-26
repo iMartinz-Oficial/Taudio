@@ -3,9 +3,6 @@ const DB_NAME = 'TaudioFS';
 const STORE_NAME = 'settings';
 const DB_VERSION = 1;
 
-/**
- * Inicializa la base de datos para guardar el 'handle' de la carpeta local.
- */
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -20,9 +17,6 @@ export const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
-/**
- * Guarda el handle de la carpeta en IndexedDB para persistirlo entre sesiones.
- */
 export const saveFolderHandle = async (handle: FileSystemDirectoryHandle): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -34,9 +28,6 @@ export const saveFolderHandle = async (handle: FileSystemDirectoryHandle): Promi
   });
 };
 
-/**
- * Recupera el handle de la carpeta.
- */
 export const getFolderHandle = async (): Promise<FileSystemDirectoryHandle | null> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -49,30 +40,30 @@ export const getFolderHandle = async (): Promise<FileSystemDirectoryHandle | nul
 };
 
 /**
- * Verifica y solicita permisos de lectura/escritura si es necesario.
+ * Solo consulta el estado actual sin disparar pop-ups.
  */
-export const verifyPermission = async (handle: FileSystemHandle, readWrite: boolean = true): Promise<boolean> => {
-  const options: any = {};
-  if (readWrite) options.mode = 'readwrite';
-  
+export const queryFolderPermission = async (handle: FileSystemDirectoryHandle): Promise<boolean> => {
   // @ts-ignore
-  if ((await handle.queryPermission(options)) === 'granted') return true;
-  // @ts-ignore
-  if ((await handle.requestPermission(options)) === 'granted') return true;
-  return false;
+  const state = await handle.queryPermission({ mode: 'readwrite' });
+  return state === 'granted';
 };
 
 /**
- * Guarda un audio directamente en la carpeta local.
+ * Solicita el permiso (debe ser llamado desde un evento de usuario: clic).
  */
+export const requestFolderPermission = async (handle: FileSystemDirectoryHandle): Promise<boolean> => {
+  // @ts-ignore
+  const state = await handle.requestPermission({ mode: 'readwrite' });
+  return state === 'granted';
+};
+
 export const saveAudio = async (docId: number, title: string, audioBlob: Blob): Promise<void> => {
   const folderHandle = await getFolderHandle();
-  if (!folderHandle) throw new Error("No folder linked");
+  if (!folderHandle) throw new Error("FOLDER_NOT_LINKED");
   
-  const hasPermission = await verifyPermission(folderHandle);
-  if (!hasPermission) throw new Error("Permission denied");
+  const granted = await queryFolderPermission(folderHandle);
+  if (!granted) throw new Error("PERMISSION_DENIED");
 
-  // Fix: Corrected regex typo from [^a-z0-0] to [^a-z0-9]
   const fileName = `Taudio_${docId}_${title.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}.wav`;
   const fileHandle = await folderHandle.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
@@ -80,43 +71,36 @@ export const saveAudio = async (docId: number, title: string, audioBlob: Blob): 
   await writable.close();
 };
 
-/**
- * Recupera el audio desde la carpeta local.
- */
 export const getAudio = async (docId: number, title: string): Promise<Blob | null> => {
   const folderHandle = await getFolderHandle();
   if (!folderHandle) return null;
 
   try {
-    const hasPermission = await verifyPermission(folderHandle, false);
-    if (!hasPermission) return null;
+    // IMPORTANTE: Aquí solo consultamos. No pedimos permiso para evitar spam al cargar la lista.
+    const granted = await queryFolderPermission(folderHandle);
+    if (!granted) return null;
 
-    // Buscamos el archivo que empiece por Taudio_ID
     const prefix = `Taudio_${docId}_`;
     // @ts-ignore
     for await (const entry of folderHandle.values()) {
       if (entry.kind === 'file' && entry.name.startsWith(prefix)) {
-        // Fix: Property 'getFile' does not exist on type 'FileSystemHandle'. Casting to any as entry is verified as a file handle.
         const file = await (entry as any).getFile();
         return file;
       }
     }
   } catch (e) {
-    console.warn("Error leyendo carpeta local:", e);
+    console.warn("Error leyendo audio:", e);
   }
   return null;
 };
 
-/**
- * Elimina un audio de la carpeta local.
- */
 export const deleteAudio = async (docId: number): Promise<void> => {
   const folderHandle = await getFolderHandle();
   if (!folderHandle) return;
 
   try {
-    const hasPermission = await verifyPermission(folderHandle);
-    if (!hasPermission) return;
+    const granted = await queryFolderPermission(folderHandle);
+    if (!granted) return;
 
     const prefix = `Taudio_${docId}_`;
     // @ts-ignore
@@ -126,6 +110,6 @@ export const deleteAudio = async (docId: number): Promise<void> => {
       }
     }
   } catch (e) {
-    console.error("Error eliminando archivo local:", e);
+    console.error("Error eliminando archivo:", e);
   }
 };
