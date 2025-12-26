@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Document, VoiceName } from './types';
+import { Document, VoiceName, FilePayload } from './types';
 import { INITIAL_DOCUMENTS } from './constants';
 import LibraryScreen from './components/LibraryScreen';
 import PlayerScreen from './components/PlayerScreen';
@@ -12,7 +12,10 @@ import { saveAudio, deleteAudio, getAudio, getFolderHandle, saveFolderHandle, qu
 const AppContent = () => {
   const [user, setUser] = useState<string | null>(localStorage.getItem('taudio_user'));
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
+  const [currentDocument, setCurrentDocument] = useState<Document | null>(() => {
+    const saved = localStorage.getItem('taudio_current_doc');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [folderState, setFolderState] = useState<'unlinked' | 'locked' | 'granted'>('unlinked');
   const navigate = useNavigate();
 
@@ -62,6 +65,12 @@ const AppContent = () => {
     }
   }, [documents]);
 
+  useEffect(() => {
+    if (currentDocument) {
+      localStorage.setItem('taudio_current_doc', JSON.stringify(currentDocument));
+    }
+  }, [currentDocument]);
+
   const handleAuthComplete = async (username: string) => {
     setUser(username);
     try {
@@ -77,11 +86,12 @@ const AppContent = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('taudio_user');
+    localStorage.removeItem('taudio_current_doc');
     setUser(null);
     setFolderState('unlinked');
   };
 
-  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string, fileData?: { base64: string, mime: string }) => {
+  const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string, fileData?: FilePayload) => {
     if (folderState !== 'granted') {
       try {
         const handle = await getFolderHandle();
@@ -100,12 +110,14 @@ const AppContent = () => {
 
     const updateDoc = (updates: Partial<Document>) => {
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+      if (currentDocument?.id === id) {
+        setCurrentDocument(prev => prev ? { ...prev, ...updates } : null);
+      }
     };
 
     try {
       let finalContent = content;
       
-      // Si hay un archivo y no hay contenido manual, extraemos el texto primero
       if (fileData && !content) {
         updateDoc({ status: 'analyzing', meta: 'Extrayendo texto...', progress: 20 });
         const extraction = await extractTextFromFile(fileData.base64, fileData.mime);
@@ -154,6 +166,7 @@ const AppContent = () => {
         <Route path="/" element={
           <LibraryScreen 
             documents={documents} 
+            currentDocument={currentDocument}
             folderState={folderState}
             onLinkFolder={async () => {
                try {
@@ -184,7 +197,7 @@ const AppContent = () => {
               const isFile = !!payload.file;
               const initialDoc: Document = {
                 id, 
-                title: payload.title || (isFile ? payload.file!.name : "Nuevo"), 
+                title: payload.title || (payload.file ? payload.file.name : "Nuevo"), 
                 content: payload.content, 
                 meta: isFile ? "Extrayendo..." : "Preparando...", 
                 progress: 5,
@@ -198,10 +211,14 @@ const AppContent = () => {
               processAudioOnly(id, payload.content || "", payload.voice, initialDoc.title, payload.file);
             }}
             onDeleteDocument={async (id) => {
+              if (currentDocument?.id === id) setCurrentDocument(null);
               setDocuments(prev => prev.filter(d => d.id !== id));
               await deleteAudio(id);
             }}
             onLogout={handleLogout}
+            onGoToPlayer={() => {
+              if (currentDocument) navigate('/player');
+            }}
           />
         } />
         <Route path="/player" element={

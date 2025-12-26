@@ -20,6 +20,12 @@ export interface Document {
 
 export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
 
+export interface FilePayload {
+  base64: string;
+  mime: string;
+  name: string;
+}
+
 export interface PlayerState {
   isPlaying: boolean;
   currentDocumentId: number | null;
