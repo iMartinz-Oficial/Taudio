@@ -29,7 +29,9 @@ const AppContent = () => {
             icon: 'play_circle',
             status: 'ready' as const,
             audioSize: `${sizeMB} MB`,
-            progress: 100
+            progress: 100,
+            iconColor: 'text-green-500',
+            bgColor: 'bg-green-500/10'
           };
         }
         return doc;
@@ -45,50 +47,40 @@ const AppContent = () => {
     }
   }, [documents]);
 
-  const handleSelectDocument = (doc: Document) => {
-    if (doc.status === 'ready') {
-      setCurrentDocument(doc);
-      navigate('/player');
-    }
-  };
-
   const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
-    let activeInterval: any = null;
+    let intervalId: any = null;
     
-    const updateProgressStage = (stageName: string, status: 'analyzing' | 'generating', speed: number) => {
-      if (activeInterval) clearInterval(activeInterval);
-      let currentProgress = 0;
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: stageName, status, progress: 0 } : d));
+    const startStepProgress = (label: string, status: 'analyzing' | 'generating', speed: number) => {
+      if (intervalId) clearInterval(intervalId);
+      let stepProgress = 0;
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: label, status, progress: 0 } : d));
       
-      activeInterval = setInterval(() => {
-        currentProgress = Math.min(96, currentProgress + (Math.random() * speed));
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: currentProgress } : d));
-      }, 600);
+      intervalId = setInterval(() => {
+        stepProgress = Math.min(96, stepProgress + (Math.random() * speed));
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: stepProgress } : d));
+      }, 500);
     };
 
     try {
       let finalContent = rawContent || "";
       
-      // FASE 1: EXTRACCIÓN
+      // 1. EXTRACCIÓN (si hay archivo)
       if (fileData) {
-        updateProgressStage("Extrayendo texto...", 'analyzing', 12);
+        startStepProgress("Extrayendo texto...", 'analyzing', 15);
         finalContent = await extractTextFromFile(fileData.base64, fileData.mime);
-        clearInterval(activeInterval);
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: 100 } : d));
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent } : d));
       }
 
-      // FASE 2: TÍTULO
-      updateProgressStage("Generando título...", 'analyzing', 18);
+      // 2. TÍTULO
+      startStepProgress("Generando título...", 'analyzing', 20);
       const { title } = await generateTitleAndSummary(finalContent);
-      clearInterval(activeInterval);
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title, progress: 100 } : d));
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title } : d));
 
-      // FASE 3: VOZ
-      updateProgressStage("Generando audio...", 'generating', 4);
+      // 3. VOZ
+      startStepProgress("Generando audio...", 'generating', 5);
       const base64 = await generateSpeech(finalContent, voice);
-      clearInterval(activeInterval);
       
-      if (!base64) throw new Error("No se pudo generar el audio");
+      if (!base64) throw new Error("Audio vacío");
 
       const pcmData = decodeBase64Audio(base64);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -110,18 +102,21 @@ const AppContent = () => {
         voice
       };
 
+      if (intervalId) clearInterval(intervalId);
       setDocuments(prev => prev.map(d => d.id === id ? finalDoc : d));
       
-      // AUTO-NAVEGACIÓN AL FINALIZAR
+      // Navegación automática
       setCurrentDocument(finalDoc);
       navigate('/player');
 
     } catch (err) {
-      if (activeInterval) clearInterval(activeInterval);
-      console.error("Proceso IA fallido:", err);
+      console.error("Error en proceso Taudio:", err);
+      if (intervalId) clearInterval(intervalId);
       setDocuments(prev => prev.map(d => 
-        d.id === id ? { ...d, meta: "Error de conexión", status: 'error', icon: 'error', progress: 0 } : d
+        d.id === id ? { ...d, meta: "Error. Toca para reintentar", status: 'error', icon: 'error', progress: 0, iconColor: 'text-red-500', bgColor: 'bg-red-500/10' } : d
       ));
+    } finally {
+      if (intervalId) clearInterval(intervalId);
     }
   };
 
@@ -142,6 +137,21 @@ const AppContent = () => {
     
     setDocuments(prev => [newDoc, ...prev]);
     fullAIProcess(id, payload.voice, payload.file, payload.content);
+  };
+
+  const handleRetry = (doc: Document) => {
+    if (doc.status === 'error') {
+      fullAIProcess(doc.id, doc.voice || 'Zephyr', undefined, doc.content);
+    }
+  };
+
+  const handleSelectDocument = (doc: Document) => {
+    if (doc.status === 'ready') {
+      setCurrentDocument(doc);
+      navigate('/player');
+    } else if (doc.status === 'error') {
+      handleRetry(doc);
+    }
   };
 
   const handleDeleteDocument = async (id: number) => {

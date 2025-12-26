@@ -22,9 +22,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
   const navigate = useNavigate();
 
   const handleDocumentClick = (doc: Document) => {
-    if (doc.status === 'ready') {
-      onSelectDocument(doc);
-    }
+    onSelectDocument(doc);
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -78,6 +76,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
              )}
              {documents.map((doc) => {
                const isWorking = doc.status === 'analyzing' || doc.status === 'generating';
+               const isError = doc.status === 'error';
                const currentProgress = Math.floor(doc.progress);
                const radius = 24;
                const circumference = 2 * Math.PI * radius;
@@ -87,7 +86,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                  <div 
                    key={doc.id}
                    onClick={() => handleDocumentClick(doc)}
-                   className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
+                   className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : isError ? 'border-red-500/20 bg-red-500/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
                  >
                    <div className={`relative size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
                       {isWorking && (
@@ -105,10 +104,11 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                    </div>
                    
                    <div className="flex-1 min-w-0">
-                     <p className={`font-bold text-[15px] truncate pr-2 ${isWorking ? 'opacity-50' : ''}`}>{doc.title}</p>
+                     <p className={`font-bold text-[15px] truncate pr-2 ${isWorking ? 'opacity-50' : isError ? 'text-red-500' : ''}`}>{doc.title}</p>
                      <div className="flex items-center gap-2 mt-0.5">
                         {isWorking && <span className="size-1.5 rounded-full bg-primary animate-pulse"></span>}
-                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isWorking ? 'text-primary' : 'text-slate-500'}`}>
+                        {isError && <span className="size-1.5 rounded-full bg-red-500"></span>}
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isWorking ? 'text-primary' : isError ? 'text-red-500' : 'text-slate-500'}`}>
                           {doc.meta}
                         </p>
                      </div>
@@ -193,7 +193,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
             const firstReady = documents.find(d => d.status === 'ready');
             if (firstReady) {
               onSelectDocument(firstReady);
-              navigate('/player');
             }
           }} className="flex flex-col items-center gap-1.5 text-slate-500">
           <div className="size-12 rounded-2xl hover:bg-white/5 flex items-center justify-center transition-colors">
