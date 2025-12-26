@@ -9,9 +9,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     minify: 'esbuild',
-    sourcemap: false
+    sourcemap: false,
+    rollupOptions: {
+      input: {
+        main: './index.html',
+      },
+    },
   },
   server: {
-    port: 3000
+    port: 3000,
+    host: true
   }
 });
