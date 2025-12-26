@@ -11,6 +11,7 @@ export default defineConfig({
     outDir: 'dist',
     minify: 'esbuild',
     sourcemap: false,
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
         main: './index.html',

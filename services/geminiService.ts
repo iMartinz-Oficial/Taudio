@@ -13,10 +13,10 @@ export const generateTitleAndSummary = async (content: string): Promise<{ title:
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      // Fix: Directly pass the prompt string as contents
       contents: `Analiza este texto y genera un título corto y atractivo (máximo 5 palabras). Devuelve solo el título, nada más: ${content.substring(0, 2000)}`,
     });
-    return { title: response.text?.trim() || "Documento sin título" };
+    const text = response.text;
+    return { title: text?.trim() || "Documento sin título" };
   } catch (error) {
     console.error("Error generating title:", error);
     return { title: "Nuevo Documento" };
@@ -28,7 +28,6 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      // Fix: Use a proper Content object { parts: Part[] }
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
@@ -45,11 +44,13 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
 
 export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
   const ai = getAI();
+  // Limpiar el texto de caracteres especiales que puedan confundir al lector
+  const cleanText = text.substring(0, 5000).replace(/[*_#]/g, '');
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      // Fix: Pass prompt as string
-      contents: `Lee con voz clara: ${text}`,
+      contents: [{ parts: [{ text: `Lee el siguiente texto con naturalidad: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -62,7 +63,7 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
 
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) {
-    console.error("Error generating speech:", error);
+    console.error("Error crítico en conexión de audio:", error);
     return undefined;
   }
 };

@@ -50,25 +50,20 @@ const AppContent = () => {
   const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
     let intervalId: any = null;
     
-    // Función auxiliar para simular progreso y manejar la UI
     const runStage = async (label: string, status: 'analyzing' | 'generating', speed: number, action: () => Promise<any>) => {
-      // Reiniciar progreso para la nueva etapa
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: label, status, progress: 0 } : d));
       
       let stepProgress = 0;
       intervalId = setInterval(() => {
-        // Subida gradual hasta el 98%
-        stepProgress = Math.min(98, stepProgress + (Math.random() * speed));
+        stepProgress = Math.min(97, stepProgress + (Math.random() * speed));
         setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: stepProgress } : d));
-      }, 400);
+      }, 350);
 
       try {
         const result = await action();
         clearInterval(intervalId);
-        // Al completar, forzar 100% brevemente
         setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: 100 } : d));
-        // Pequeña pausa para que el usuario vea el 100%
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 200));
         return result;
       } catch (error) {
         clearInterval(intervalId);
@@ -78,31 +73,27 @@ const AppContent = () => {
 
     try {
       let finalContent = rawContent || "";
-      let finalTitle = "Nuevo Documento";
+      let finalTitle = "Documento";
       
-      // 1. FASE DE EXTRACCIÓN
       if (fileData) {
-        finalContent = await runStage("Extrayendo texto...", 'analyzing', 15, () => 
+        finalContent = await runStage("Extrayendo texto...", 'analyzing', 18, () => 
           extractTextFromFile(fileData.base64, fileData.mime)
         );
         setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent } : d));
       }
 
-      // 2. FASE DE TÍTULO
-      const titleResult = await runStage("Generando título...", 'analyzing', 20, () => 
+      const titleResult = await runStage("Analizando...", 'analyzing', 25, () => 
         generateTitleAndSummary(finalContent)
       );
       finalTitle = titleResult.title;
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: finalTitle } : d));
 
-      // 3. FASE DE AUDIO (La más crítica)
-      const base64 = await runStage("Generando audio...", 'generating', 4, () => 
+      const base64 = await runStage("Generando voz...", 'generating', 6, () => 
         generateSpeech(finalContent, voice)
       );
       
-      if (!base64) throw new Error("Audio vacío devuelto por la API");
+      if (!base64) throw new Error("La conexión de audio falló");
 
-      // PROCESO FINAL DE GUARDADO
       const pcmData = decodeBase64Audio(base64);
       const wavBlob = createWavBlob(pcmData, 24000);
       await saveAudio(id, wavBlob);
@@ -125,18 +116,18 @@ const AppContent = () => {
 
       setDocuments(prev => prev.map(d => d.id === id ? finalDoc : d));
       
-      // NAVEGACIÓN GARANTIZADA
+      // AUTO-REPRODUCCIÓN AL TERMINAR
       setCurrentDocument(finalDoc);
-      setTimeout(() => navigate('/player'), 100);
+      setTimeout(() => navigate('/player'), 150);
 
     } catch (err) {
-      console.error("Fallo crítico en Taudio:", err);
+      console.error("Error en flujo Taudio:", err);
       setDocuments(prev => prev.map(d => 
         d.id === id ? { 
           ...d, 
-          meta: "Error. Toca para reintentar", 
+          meta: "Error de conexión. Toca para reintentar", 
           status: 'error', 
-          icon: 'error', 
+          icon: 'priority_high', 
           progress: 0, 
           iconColor: 'text-red-500', 
           bgColor: 'bg-red-500/10' 
@@ -171,7 +162,6 @@ const AppContent = () => {
       setCurrentDocument(doc);
       navigate('/player');
     } else if (doc.status === 'error') {
-      // Reintentar si hubo error
       fullAIProcess(doc.id, doc.voice || 'Zephyr', undefined, doc.content);
     }
   };
