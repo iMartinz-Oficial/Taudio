@@ -46,26 +46,27 @@ const AppContent = () => {
 
   const processAudioOnly = async (id: number, content: string, voice: VoiceName) => {
     let intervalId: any = null;
-    
     const updateDoc = (updates: Partial<Document>) => {
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
     };
 
     try {
-      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 0 });
+      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 10 });
       
-      let prog = 0;
+      let prog = 10;
       intervalId = setInterval(() => {
-        prog = Math.min(98, prog + Math.random() * 5);
+        prog = Math.min(95, prog + Math.random() * 2);
         updateDoc({ progress: prog });
-      }, 400);
+      }, 600);
 
-      const base64 = await generateSpeech(content, voice);
+      const result = await generateSpeech(content, voice);
       clearInterval(intervalId);
       
-      if (!base64) throw new Error("Fallo en la conexión");
+      if (result.error) {
+        throw new Error(result.error);
+      }
 
-      const pcmData = decodeBase64Audio(base64);
+      const pcmData = decodeBase64Audio(result.data!);
       const wavBlob = createWavBlob(pcmData, 24000);
       await saveAudio(id, wavBlob);
       
@@ -82,12 +83,11 @@ const AppContent = () => {
         voice
       });
 
-    } catch (err) {
+    } catch (err: any) {
       if (intervalId) clearInterval(intervalId);
-      console.error("Error en audio:", err);
       updateDoc({ 
         status: 'error', 
-        meta: 'Fallo de audio. Toca para reintentar.', 
+        meta: err.message || 'Error desconocido', 
         progress: 0,
         icon: 'error',
         iconColor: 'text-red-500',
@@ -105,8 +105,8 @@ const AppContent = () => {
       id,
       title,
       content,
-      meta: "Procesando...",
-      progress: 20,
+      meta: "Iniciando...",
+      progress: 5,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
       icon: "sync",
@@ -116,13 +116,19 @@ const AppContent = () => {
 
     setDocuments(prev => [initialDoc, ...prev]);
 
-    // Si hay archivo, extraemos texto primero
     if (payload.file && !content) {
-      content = await extractTextFromFile(payload.file.base64, payload.file.mime);
-      if (!content) {
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: 'error', meta: 'Error leyendo archivo.' } : d));
+      const result = await extractTextFromFile(payload.file.base64, payload.file.mime);
+      if (result.error) {
+        setDocuments(prev => prev.map(d => d.id === id ? { 
+            ...d, 
+            status: 'error', 
+            meta: result.error!,
+            icon: 'error',
+            iconColor: 'text-red-500'
+        } : d));
         return;
       }
+      content = result.text!;
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, content } : d));
     }
 

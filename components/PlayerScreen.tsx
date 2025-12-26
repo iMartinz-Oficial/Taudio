@@ -133,9 +133,12 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChang
             const arrayBuffer = await cachedBlob.arrayBuffer();
             buffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
           } else {
-            const base64 = await generateSpeech(doc.content, doc.voice || 'Zephyr');
-            if (!base64) throw new Error("No audio data");
-            const pcmData = decodeBase64Audio(base64);
+            // Correctly handle the response from generateSpeech which is an object {data?, error?}
+            const result = await generateSpeech(doc.content, doc.voice || 'Zephyr');
+            if (result.error) throw new Error(result.error);
+            if (!result.data) throw new Error("No audio data");
+            
+            const pcmData = decodeBase64Audio(result.data);
             buffer = await decodeAudioData(pcmData, audioContextRef.current);
           }
           audioBufferRef.current = buffer;

@@ -20,7 +20,8 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [selectedVoice, setSelectedVoice] = useState<VoiceName>('Zephyr');
-  const [selectedFile, setSelectedFile] = useState<{ base64: string, mime: string, name: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ base64: string, mime: string, name: string, size: number } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,10 +42,22 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("El archivo es demasiado grande. Máximo 2MB.");
+      return;
+    }
+
+    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1];
-      setSelectedFile({ base64, mime: file.type, name: file.name });
+      setSelectedFile({ base64, mime: file.type, name: file.name, size: file.size });
+      setIsUploading(false);
+    };
+    reader.onerror = () => {
+        alert("Error al leer el archivo.");
+        setIsUploading(false);
     };
     reader.readAsDataURL(file);
   };
@@ -75,15 +88,16 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
         <div className="px-6 py-4 flex flex-col gap-3">
           {documents.map((doc) => {
             const isWorking = doc.status === 'analyzing' || doc.status === 'generating';
+            const isError = doc.status === 'error';
             const radius = 24;
             const circumference = 2 * Math.PI * radius;
             const offset = circumference - (doc.progress / 100) * circumference;
             
             return (
-              <div key={doc.id} className="relative">
+              <div key={doc.id} className="relative group">
                 <div 
-                  onClick={() => !isWorking && onSelectDocument(doc)}
-                  className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
+                  onClick={() => onSelectDocument(doc)}
+                  className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : isError ? 'border-red-500/30 bg-red-500/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
                 >
                   <div className={`relative size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
                     {isWorking && (
@@ -91,20 +105,33 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                         <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="text-primary transition-all duration-300" />
                       </svg>
                     )}
-                    <span className={`material-symbols-outlined text-[28px] ${doc.iconColor}`}>{isWorking ? 'sync' : doc.icon}</span>
+                    <span className={`material-symbols-outlined text-[28px] ${doc.iconColor} ${isWorking ? 'animate-pulse' : ''}`}>{doc.icon}</span>
                   </div>
                   
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-[15px] truncate pr-2">{doc.title}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">{doc.meta}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                        {isError && <span className="size-1.5 rounded-full bg-red-500 animate-pulse"></span>}
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isError ? 'text-red-500' : 'text-slate-500'}`}>
+                            {doc.meta}
+                        </p>
+                    </div>
                   </div>
                   
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === doc.id ? null : doc.id); }}
-                    className="size-10 flex items-center justify-center text-slate-400 hover:bg-black/10 rounded-full"
-                  >
-                    <span className="material-symbols-outlined">more_vert</span>
-                  </button>
+                  {isError && (
+                    <div className="size-10 flex items-center justify-center text-red-500">
+                        <span className="material-symbols-outlined text-[20px]">refresh</span>
+                    </div>
+                  )}
+
+                  {!isError && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === doc.id ? null : doc.id); }}
+                        className="size-10 flex items-center justify-center text-slate-400 hover:bg-black/10 rounded-full"
+                    >
+                        <span className="material-symbols-outlined">more_vert</span>
+                    </button>
+                  )}
                 </div>
 
                 {menuOpenId === doc.id && (
@@ -134,7 +161,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
               className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-3 mb-6 font-bold outline-none ring-2 ring-transparent focus:ring-primary"
               value={editTitleValue}
               onChange={(e) => setEditTitleValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
             />
             <div className="flex gap-3">
               <button onClick={() => setEditingDocId(null)} className="flex-1 py-3 font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl">Cancelar</button>
@@ -157,12 +183,19 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                 onChange={e => setNewTitle(e.target.value)}
               />
               <div 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isUploading && fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-[32px] p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${selectedFile ? 'border-green-500 bg-green-500/5 text-green-500' : 'border-slate-700/50 hover:border-primary'}`}
               >
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.txt,.md,.jpg,.png" />
-                <span className="material-symbols-outlined text-4xl">{selectedFile ? 'check_circle' : 'cloud_upload'}</span>
-                <p className="text-xs font-bold truncate max-w-full px-2 text-center">{selectedFile ? selectedFile.name : 'Subir archivo (PDF, Imagen, TXT)'}</p>
+                {isUploading ? (
+                    <span className="material-symbols-outlined text-4xl animate-spin text-primary">sync</span>
+                ) : (
+                    <span className="material-symbols-outlined text-4xl">{selectedFile ? 'check_circle' : 'cloud_upload'}</span>
+                )}
+                <p className="text-xs font-bold truncate max-w-full px-2 text-center">
+                    {isUploading ? 'Leyendo archivo...' : selectedFile ? selectedFile.name : 'Subir archivo (PDF, Imagen, TXT)'}
+                </p>
+                {!selectedFile && !isUploading && <p className="text-[10px] opacity-50 uppercase font-black">Máximo 2MB</p>}
               </div>
               {!selectedFile && (
                 <textarea placeholder="O pega el texto aquí..." rows={4} value={newContent} onChange={e => setNewContent(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 border-none text-sm font-medium resize-none focus:ring-1 focus:ring-primary" />
@@ -179,7 +212,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
               </div>
               <div className="flex gap-3 pt-4 sticky bottom-0 bg-white dark:bg-surface-dark py-2">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-4 font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-2xl">Cerrar</button>
-                <button type="submit" className="flex-[2] bg-primary text-white font-bold py-4 rounded-2xl shadow-xl shadow-primary/20">Crear Audio</button>
+                <button type="submit" disabled={isUploading || (!newContent.trim() && !selectedFile)} className="flex-[2] bg-primary text-white font-bold py-4 rounded-2xl shadow-xl shadow-primary/20 disabled:opacity-50">Crear Audio</button>
               </div>
             </form>
           </div>

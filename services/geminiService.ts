@@ -5,27 +5,42 @@ import { VoiceName } from "../types";
 const getAI = () => {
   // @ts-ignore
   const apiKey = process.env.API_KEY as string;
-  if (!apiKey) throw new Error("API Key no disponible");
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error("API_KEY_MISSING");
+  }
   return new GoogleGenAI({ apiKey });
+};
+
+/**
+ * Procesa errores de la API de Gemini para dar feedback útil
+ */
+const handleApiError = (error: any): string => {
+  const message = error?.message?.toLowerCase() || "";
+  console.error("Detalle técnico del error:", error);
+
+  if (message.includes("api_key_missing")) return "Configura tu API Key";
+  if (message.includes("429") || message.includes("quota")) return "Límite de API agotado";
+  if (message.includes("403") || message.includes("permission")) return "API Key inválida";
+  if (message.includes("content has no parts")) return "El modelo no pudo generar respuesta";
+  if (message.includes("safety")) return "Contenido bloqueado por seguridad";
+  
+  return "Error de conexión con la IA";
 };
 
 /**
  * Genera audio a partir de texto usando el modelo TTS especializado.
  */
-export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
+export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<{data?: string, error?: string}> => {
   try {
     const ai = getAI();
-    
-    // Limpieza y preparación del texto para el modelo TTS
     const cleanText = text
       .substring(0, 3000)
       .replace(/[#*`_]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
-    if (!cleanText) return undefined;
+    if (!cleanText) return { error: "El texto está vacío" };
 
-    // Usamos un prefijo para que el modelo identifique la tarea de voz claramente
     const prompt = `Read this text clearly: ${cleanText}`;
 
     const response = await ai.models.generateContent({
@@ -42,32 +57,36 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
     });
 
     const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    return audioBase64;
+    if (!audioBase64) return { error: "La IA no devolvió audio" };
+    
+    return { data: audioBase64 };
   } catch (error) {
-    console.error("Error crítico en la conexión TTS:", error);
-    return undefined;
+    return { error: handleApiError(error) };
   }
 };
 
 /**
- * Extrae texto de archivos de forma directa sin generar resúmenes ni títulos.
+ * Extrae texto de archivos.
  */
-export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
-  const ai = getAI();
+export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<{text?: string, error?: string}> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: "Extract the full text from this document. Only the text, no extra comments." }
+          { text: "Extract all text from this file. Return ONLY the text content." }
         ]
       }
     });
-    return response.text || "";
+    
+    const extractedText = response.text;
+    if (!extractedText) return { error: "No se detectó texto en el archivo" };
+    
+    return { text: extractedText };
   } catch (error) {
-    console.error("Error extrayendo texto:", error);
-    return "";
+    return { error: handleApiError(error) };
   }
 };
 
@@ -103,12 +122,10 @@ export const decodeAudioData = async (
 export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
-  
   view.setUint32(0, 0x52494646, false);
   view.setUint32(4, 36 + pcmData.length, true);
   view.setUint32(8, 0x57415645, false);
   view.setUint32(12, 0x666d7420, false);
-  view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
@@ -117,7 +134,6 @@ export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): 
   view.setUint16(34, 16, true);
   view.setUint32(36, 0x64617461, false);
   view.setUint32(40, pcmData.length, true);
-
-  // El casteo a any evita el error de tipos TS entre Uint8Array y BlobPart
-  return new Blob([header, pcmData as any], { type: 'audio/wav' });
+  // @ts-ignore
+  return new Blob([header, pcmData], { type: 'audio/wav' });
 };
