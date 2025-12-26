@@ -113,5 +113,6 @@ export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): 
   // Data chunk length
   view.setUint32(40, pcmData.length, true);
 
-  return new Blob([header, pcmData], { type: 'audio/wav' });
+  // Se añade el cast a BlobPart[] para evitar el error de compilación de SharedArrayBuffer
+  return new Blob([header, pcmData] as BlobPart[], { type: 'audio/wav' });
 };
