@@ -3,7 +3,10 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
 export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // @ts-ignore
+  const apiKey = process.env.API_KEY as string;
+  const ai = new GoogleGenAI({ apiKey });
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
