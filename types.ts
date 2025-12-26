@@ -1,4 +1,9 @@
 
+export interface User {
+  username: string;
+  isLoggedIn: boolean;
+}
+
 export interface Document {
   id: number;
   title: string;
