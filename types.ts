@@ -8,7 +8,9 @@ export interface Document {
   bgColor: string;
   icon: string;
   content?: string;
-  audioSize?: string; // Nuevo campo para el tamaño del audio
+  audioSize?: string;
+  status: 'analyzing' | 'generating' | 'ready' | 'error';
+  voice?: VoiceName;
 }
 
 export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';

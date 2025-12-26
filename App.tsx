@@ -5,19 +5,23 @@ import { Document, VoiceName } from './types';
 import { INITIAL_DOCUMENTS } from './constants';
 import LibraryScreen from './components/LibraryScreen';
 import PlayerScreen from './components/PlayerScreen';
-import { generateSpeech, decodeBase64Audio, createWavBlob } from './services/geminiService';
+import { generateSpeech, decodeBase64Audio, createWavBlob, generateTitleAndSummary, extractTextFromFile } from './services/geminiService';
 import { saveAudio, deleteAudio, getAudio } from './services/storageService';
 
 const App: React.FC = () => {
-  const [documents, setDocuments] = useState<Document[]>(INITIAL_DOCUMENTS);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
   const [selectedVoice, setSelectedVoice] = useState<VoiceName>('Zephyr');
-  const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
 
-  // Verificar caché al iniciar
+  // Cargar documentos iniciales y caché
   useEffect(() => {
-    const checkCache = async () => {
-      const updatedDocs = await Promise.all(documents.map(async (doc) => {
+    const loadData = async () => {
+      // Intentar cargar de localStorage si existen o usar los iniciales
+      const saved = localStorage.getItem('taudio_docs');
+      // Fix: Since INITIAL_DOCUMENTS already includes 'status', no need to map it here
+      const baseDocs = saved ? JSON.parse(saved) : INITIAL_DOCUMENTS;
+      
+      const updatedDocs = await Promise.all(baseDocs.map(async (doc: Document) => {
         const audio = await getAudio(doc.id);
         if (audio) {
           const sizeMB = (audio.size / (1024 * 1024)).toFixed(1);
@@ -25,27 +29,48 @@ const App: React.FC = () => {
             ...doc,
             meta: `Listo • ${sizeMB} MB`,
             icon: 'play_circle',
-            audioSize: `${sizeMB} MB`,
-            iconColor: 'text-green-500',
-            bgColor: 'bg-green-500/10'
+            status: 'ready' as const,
+            audioSize: `${sizeMB} MB`
           };
         }
         return doc;
       }));
       setDocuments(updatedDocs);
     };
-    checkCache();
+    loadData();
   }, []);
 
+  // Guardar documentos en localStorage cada vez que cambian
+  useEffect(() => {
+    if (documents.length > 0) {
+      localStorage.setItem('taudio_docs', JSON.stringify(documents));
+    }
+  }, [documents]);
+
   const handleSelectDocument = (doc: Document) => {
-    setCurrentDocument(doc);
+    if (doc.status === 'ready') {
+      setCurrentDocument(doc);
+    }
   };
 
-  const processAudioForDoc = async (id: number, content: string, voice: VoiceName) => {
-    setProcessingIds(prev => new Set(prev).add(id));
-    
+  const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
     try {
-      const base64 = await generateSpeech(content, voice);
+      let finalContent = rawContent || "";
+      
+      // 1. Extracción si es necesario
+      if (fileData) {
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Extrayendo texto...", status: 'analyzing' } : d));
+        finalContent = await extractTextFromFile(fileData.base64, fileData.mime);
+      }
+
+      // 2. Titulación inteligente
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent, meta: "Generando título...", status: 'analyzing' } : d));
+      const { title } = await generateTitleAndSummary(finalContent);
+
+      // 3. Generación de Audio
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title, meta: "Generando voz...", status: 'generating' } : d));
+      const base64 = await generateSpeech(finalContent, voice);
+      
       if (base64) {
         const pcmData = decodeBase64Audio(base64);
         const wavBlob = createWavBlob(pcmData, 24000);
@@ -56,42 +81,41 @@ const App: React.FC = () => {
         setDocuments(prev => prev.map(d => 
           d.id === id ? { 
             ...d, 
+            title,
             meta: `Listo • ${sizeMB} MB`, 
             icon: 'play_circle',
             audioSize: `${sizeMB} MB`,
+            status: 'ready',
             iconColor: 'text-green-500',
             bgColor: 'bg-green-500/10'
           } : d
         ));
       }
     } catch (err) {
-      console.error("Auto-processing error:", err);
+      console.error("Proceso IA fallido:", err);
       setDocuments(prev => prev.map(d => 
-        d.id === id ? { ...d, meta: "Error en descarga", icon: "error" } : d
+        d.id === id ? { ...d, meta: "Error en proceso", status: 'error', icon: 'error' } : d
       ));
-    } finally {
-      setProcessingIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
     }
   };
 
-  const handleAddDocument = async (newDoc: { title: string; content: string }) => {
+  const handleAddDocument = async (payload: { title?: string; content?: string; file?: { base64: string, mime: string }; voice: VoiceName }) => {
     const id = Date.now();
-    const doc: Document = {
+    const newDoc: Document = {
       id,
-      title: newDoc.title,
-      content: newDoc.content,
-      meta: "Generando audio...",
+      title: payload.title || "Analizando...",
+      content: payload.content || "",
+      meta: "Iniciando...",
       progress: 0,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
-      icon: "pending"
+      icon: "sync",
+      status: 'analyzing',
+      voice: payload.voice
     };
-    setDocuments(prev => [doc, ...prev]);
-    processAudioForDoc(id, newDoc.content, selectedVoice);
+    
+    setDocuments(prev => [newDoc, ...prev]);
+    fullAIProcess(id, payload.voice, payload.file, payload.content);
   };
 
   const handleDeleteDocument = async (id: number) => {
@@ -111,7 +135,6 @@ const App: React.FC = () => {
             element={
               <LibraryScreen 
                 documents={documents} 
-                processingIds={processingIds}
                 onSelectDocument={handleSelectDocument} 
                 onAddDocument={handleAddDocument}
                 onDeleteDocument={handleDeleteDocument}
@@ -123,7 +146,6 @@ const App: React.FC = () => {
             element={
               <PlayerScreen 
                 document={currentDocument} 
-                voice={selectedVoice}
                 onVoiceChange={setSelectedVoice}
               />
             } 

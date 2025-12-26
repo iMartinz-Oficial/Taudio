@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { VoiceName } from "../types";
 
 const getAI = () => {
@@ -8,19 +8,35 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+export const generateTitleAndSummary = async (content: string): Promise<{ title: string }> => {
+  const ai = getAI();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      // Fix: Directly pass the prompt string as contents
+      contents: `Analiza este texto y genera un título corto y atractivo (máximo 5 palabras). Devuelve solo el título, nada más: ${content.substring(0, 2000)}`,
+    });
+    return { title: response.text?.trim() || "Documento sin título" };
+  } catch (error) {
+    console.error("Error generating title:", error);
+    return { title: "Nuevo Documento" };
+  }
+};
+
 export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
   const ai = getAI();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [{
+      // Fix: Use a proper Content object { parts: Part[] }
+      contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: "Extrae todo el texto de este documento de forma literal. Devuelve solo el texto extraído, sin comentarios tuyos." }
+          { text: "Extrae todo el texto de este documento de forma literal. Devuelve solo el texto extraído." }
         ]
-      }]
+      }
     });
-    return response.text || "No se pudo extraer texto del documento.";
+    return response.text || "";
   } catch (error) {
     console.error("Error extracting text:", error);
     throw error;
@@ -32,7 +48,8 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Lee el siguiente texto con naturalidad y fluidez en español, respetando las pausas: ${text}` }] }],
+      // Fix: Pass prompt as string
+      contents: `Lee con voz clara: ${text}`,
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -79,40 +96,21 @@ export const decodeAudioData = async (
   return buffer;
 };
 
-/**
- * Convierte datos PCM (Int16) en un Blob de tipo WAV para descarga
- */
 export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
-
-  // RIFF identifier
-  view.setUint32(0, 0x52494646, false); // "RIFF"
-  // File length
+  view.setUint32(0, 0x52494646, false);
   view.setUint32(4, 36 + pcmData.length, true);
-  // RIFF type
-  view.setUint32(8, 0x57415645, false); // "WAVE"
-  // Format chunk identifier
-  view.setUint32(12, 0x666d7420, false); // "fmt "
-  // Format chunk length
+  view.setUint32(8, 0x57415645, false);
+  view.setUint32(12, 0x666d7420, false);
   view.setUint32(16, 16, true);
-  // Sample format (1 is PCM)
   view.setUint16(20, 1, true);
-  // Channel count
-  view.setUint16(22, 1, true); // Mono
-  // Sample rate
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  // Byte rate (sampleRate * channels * bitsPerSample / 8)
   view.setUint32(28, sampleRate * 1 * 16 / 8, true);
-  // Block align
   view.setUint16(32, 1 * 16 / 8, true);
-  // Bits per sample
   view.setUint16(34, 16, true);
-  // Data chunk identifier
-  view.setUint32(36, 0x64617461, false); // "data"
-  // Data chunk length
+  view.setUint32(36, 0x64617461, false);
   view.setUint32(40, pcmData.length, true);
-
-  // Se añade el cast a BlobPart[] para evitar el error de compilación de SharedArrayBuffer
   return new Blob([header, pcmData] as BlobPart[], { type: 'audio/wav' });
 };

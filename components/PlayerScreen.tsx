@@ -8,11 +8,10 @@ import { AI_VOICES } from '../constants';
 
 interface PlayerScreenProps {
   document: Document | null;
-  voice: VoiceName;
   onVoiceChange: (voice: VoiceName) => void;
 }
 
-const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoiceChange }) => {
+const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, onVoiceChange }) => {
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -20,15 +19,13 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
   const [duration, setDuration] = useState(0);
   const [hasCachedAudio, setHasCachedAudio] = useState(false);
   
-  // Refs para el motor de audio
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const startTimeRef = useRef<number>(0);
-  const offsetRef = useRef<number>(0); // Guardamos la posición actual
+  const offsetRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
 
-  // Cargar tiempo guardado al iniciar
   useEffect(() => {
     if (doc) {
       const savedTime = localStorage.getItem(`taudio_pos_${doc.id}`);
@@ -43,10 +40,9 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
     }
   }, [doc]);
 
-  // Limpiar al salir
   useEffect(() => {
     return () => {
-      stopPlayback(false); // Detener sin resetear offset
+      stopPlayback(false);
       if (doc) localStorage.setItem(`taudio_pos_${doc.id}`, offsetRef.current.toString());
     };
   }, [doc]);
@@ -57,7 +53,6 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
       const currentPos = offsetRef.current + playedTime;
       setCurrentTime(currentPos);
       
-      // Guardar posición periódicamente
       if (doc) localStorage.setItem(`taudio_pos_${doc.id}`, currentPos.toString());
 
       if (currentPos >= duration && duration > 0) {
@@ -83,7 +78,6 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
     if (sourceNodeRef.current) {
       try {
         sourceNodeRef.current.stop();
-        // Si estamos deteniendo, calculamos el nuevo offset real basado en cuánto tiempo pasó
         if (!resetOffset && audioContextRef.current && isPlaying) {
           offsetRef.current += (audioContextRef.current.currentTime - startTimeRef.current);
         }
@@ -100,7 +94,6 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
   const playFromOffset = (offset: number) => {
     if (!audioBufferRef.current || !audioContextRef.current) return;
     
-    // Si ya está sonando, paramos el nodo actual primero
     if (sourceNodeRef.current) {
       try { sourceNodeRef.current.stop(); } catch(e) {}
     }
@@ -131,7 +124,6 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
           await audioContextRef.current.resume();
         }
 
-        // Si no tenemos el buffer cargado, lo buscamos
         if (!audioBufferRef.current) {
           setIsProcessing(true);
           const cachedBlob = await getAudio(doc.id);
@@ -141,7 +133,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
             const arrayBuffer = await cachedBlob.arrayBuffer();
             buffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
           } else {
-            const base64 = await generateSpeech(doc.content, voice);
+            const base64 = await generateSpeech(doc.content, doc.voice || 'Zephyr');
             if (!base64) throw new Error("No audio data");
             const pcmData = decodeBase64Audio(base64);
             buffer = await decodeAudioData(pcmData, audioContextRef.current);
@@ -224,7 +216,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
 
         <div className="text-center w-full mb-8 shrink-0 px-4">
           <h1 className="text-2xl font-black mb-1 truncate">{doc.title}</h1>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Voz: {AI_VOICES.find(v => v.name === voice)?.label || voice}</p>
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Voz: {AI_VOICES.find(v => v.name === (doc.voice || 'Zephyr'))?.label || 'Voz Personalizada'}</p>
         </div>
 
         <div className="w-full px-4 mb-8 shrink-0">
@@ -263,13 +255,6 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
             <span className="material-symbols-outlined" style={{ fontSize: '38px' }}>forward_10</span>
           </button>
         </div>
-      </div>
-      
-      <div className="pb-10 px-8 flex justify-center opacity-30 shrink-0">
-         <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[16px]">info</span>
-            <p className="text-[9px] font-bold uppercase tracking-widest">El progreso se guarda automáticamente</p>
-         </div>
       </div>
     </div>
   );
