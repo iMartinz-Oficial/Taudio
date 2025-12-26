@@ -37,7 +37,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
         file: selectedFile || undefined,
         voice: selectedVoice
       });
-      // Reset
       setNewTitle("");
       setNewContent("");
       setSelectedFile(null);
@@ -61,7 +60,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark">
       <header className="flex items-center justify-between px-6 py-4 bg-background-light dark:bg-background-dark z-10 shrink-0 border-b border-black/5 dark:border-white/5">
         <div className="flex items-center gap-3">
-          <img src="./icon.png?v=2" alt="Taudio Logo" className="size-10 rounded-xl shadow-lg border border-white/10" />
+          <img src="icon.png" alt="Taudio Logo" className="size-10 rounded-xl shadow-lg border border-white/10" />
           <div>
             <h2 className="text-xl font-black tracking-tighter text-primary">Taudio</h2>
             <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Mi Biblioteca</p>
@@ -83,6 +82,10 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
              )}
              {documents.map((doc) => {
                const isWorking = doc.status === 'analyzing' || doc.status === 'generating';
+               const currentProgress = Math.floor(doc.progress);
+               const radius = 24;
+               const circumference = 2 * Math.PI * radius;
+               const offset = circumference - (currentProgress / 100) * circumference;
                
                return (
                  <div 
@@ -91,12 +94,20 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                    className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
                  >
                    <div className={`relative size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
+                      {isWorking && (
+                        <svg className="absolute inset-0 size-full -rotate-90 pointer-events-none">
+                          <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="2" className="text-primary/10" />
+                          <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="text-primary transition-all duration-300" />
+                        </svg>
+                      )}
+                      
                       {isWorking ? (
-                        <span className="material-symbols-outlined text-primary text-[28px] animate-spin">sync</span>
+                        <span className="text-[10px] font-black text-primary z-10">{currentProgress}%</span>
                       ) : (
                         <span className={`material-symbols-outlined text-[28px] ${doc.iconColor}`}>{doc.icon}</span>
                       )}
                    </div>
+                   
                    <div className="flex-1 min-w-0">
                      <p className={`font-bold text-[15px] truncate pr-2 ${isWorking ? 'opacity-50' : ''}`}>{doc.title}</p>
                      <div className="flex items-center gap-2 mt-0.5">
@@ -106,6 +117,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                         </p>
                      </div>
                    </div>
+                   
                    <button onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors">
                       <span className="material-symbols-outlined text-[22px]">delete</span>
                    </button>
@@ -122,7 +134,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
             <h3 className="text-xl font-black mb-4">Nuevo Taudio</h3>
             
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-y-auto no-scrollbar space-y-4 pr-1">
-              {/* Opción de Archivo */}
               <div 
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-[24px] p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${selectedFile ? 'border-green-500 bg-green-500/5' : 'border-slate-700/50 hover:border-primary hover:bg-primary/5'}`}
@@ -143,7 +154,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                 </div>
               )}
 
-              {/* Selector de Voz */}
               <div className="space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-1">Elige la voz del narrador</p>
                 <div className="grid grid-cols-2 gap-2">

@@ -1,10 +1,10 @@
 
-const CACHE_NAME = 'taudio-v1';
+const CACHE_NAME = 'taudio-v2';
 const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon.png'
+  '/',
+  'index.html',
+  'manifest.json',
+  'icon.png'
 ];
 
 self.addEventListener('install', (event) => {

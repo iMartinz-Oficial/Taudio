@@ -3,17 +3,23 @@
   "name": "Taudio",
   "short_name": "Taudio",
   "description": "Tu biblioteca personal con voz de IA",
-  "start_url": "./index.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#101922",
   "theme_color": "#137fec",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "./icon.png",
+      "src": "icon.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
     }
   ]
 }
