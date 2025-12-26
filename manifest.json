@@ -1,7 +1,7 @@
 
 {
-  "name": "VozLibro TTS",
-  "short_name": "VozLibro",
+  "name": "Taudio",
+  "short_name": "Taudio",
   "description": "Tu biblioteca personal con voz de IA",
   "start_url": "./index.html",
   "display": "standalone",
