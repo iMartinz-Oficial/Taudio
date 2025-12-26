@@ -51,29 +51,40 @@ const App: React.FC = () => {
   };
 
   const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
-    // Iniciamos simulación de progreso
-    const progressInterval = setInterval(() => {
-      setDocuments(prev => prev.map(d => {
-        if (d.id === id && d.status !== 'ready' && d.status !== 'error') {
-          const nextProgress = d.progress + (Math.random() * 5);
-          return { ...d, progress: Math.min(98, nextProgress) };
-        }
-        return d;
-      }));
-    }, 1000);
+    let currentStepProgress = 0;
+    
+    // Función para manejar el progreso de cada etapa individualmente
+    const startProgressStage = (speed: number = 5) => {
+      currentStepProgress = 0;
+      const interval = setInterval(() => {
+        currentStepProgress = Math.min(95, currentStepProgress + (Math.random() * speed));
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: currentStepProgress } : d));
+      }, 800);
+      return interval;
+    };
 
     try {
       let finalContent = rawContent || "";
       
+      // FASE 1: EXTRACCIÓN
       if (fileData) {
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Extrayendo texto...", status: 'analyzing' } : d));
+        const pInterval = startProgressStage(10);
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Extrayendo texto...", status: 'analyzing', progress: 0 } : d));
         finalContent = await extractTextFromFile(fileData.base64, fileData.mime);
+        clearInterval(pInterval);
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: 100 } : d));
       }
 
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent, meta: "Generando título...", status: 'analyzing' } : d));
+      // FASE 2: TÍTULO
+      const tInterval = startProgressStage(15);
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent, meta: "Generando título...", status: 'analyzing', progress: 0 } : d));
       const { title } = await generateTitleAndSummary(finalContent);
+      clearInterval(tInterval);
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title, progress: 100 } : d));
 
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title, meta: "Generando voz...", status: 'generating' } : d));
+      // FASE 3: VOZ (La más lenta)
+      const vInterval = startProgressStage(3);
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Generando audio...", status: 'generating', progress: 0 } : d));
       const base64 = await generateSpeech(finalContent, voice);
       
       if (base64) {
@@ -83,11 +94,10 @@ const App: React.FC = () => {
         
         const sizeMB = (wavBlob.size / (1024 * 1024)).toFixed(1);
         
-        clearInterval(progressInterval);
+        clearInterval(vInterval);
         setDocuments(prev => prev.map(d => 
           d.id === id ? { 
             ...d, 
-            title,
             meta: `Listo • ${sizeMB} MB`, 
             icon: 'play_circle',
             audioSize: `${sizeMB} MB`,
@@ -99,7 +109,6 @@ const App: React.FC = () => {
         ));
       }
     } catch (err) {
-      clearInterval(progressInterval);
       console.error("Proceso IA fallido:", err);
       setDocuments(prev => prev.map(d => 
         d.id === id ? { ...d, meta: "Error en proceso", status: 'error', icon: 'error', progress: 0 } : d
@@ -111,10 +120,10 @@ const App: React.FC = () => {
     const id = Date.now();
     const newDoc: Document = {
       id,
-      title: payload.title || "Analizando...",
+      title: payload.title || "Nuevo Documento",
       content: payload.content || "",
-      meta: "Iniciando...",
-      progress: 5,
+      meta: "Esperando...",
+      progress: 0,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
       icon: "sync",

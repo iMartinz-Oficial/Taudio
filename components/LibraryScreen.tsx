@@ -58,13 +58,10 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark">
-      <header className="flex items-center justify-between px-6 py-4 bg-background-light dark:bg-background-dark z-10 shrink-0 border-b border-black/5 dark:border-white/5">
-        <div className="flex items-center gap-3">
-          <img src="icon.png" alt="Taudio Logo" className="size-10 rounded-xl shadow-lg border border-white/10" />
-          <div>
-            <h2 className="text-xl font-black tracking-tighter text-primary">Taudio</h2>
-            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Mi Biblioteca</p>
-          </div>
+      <header className="flex items-center justify-between px-6 py-6 bg-background-light dark:bg-background-dark z-10 shrink-0 border-b border-black/5 dark:border-white/5">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-black tracking-tighter text-primary leading-none">Taudio</h2>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1.5">Mi Biblioteca</p>
         </div>
         <button className="size-11 flex items-center justify-center rounded-2xl bg-black/5 dark:bg-white/5">
           <span className="material-symbols-outlined">search</span>
