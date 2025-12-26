@@ -2,30 +2,32 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
-// Inicialización fresca en cada llamada para evitar problemas de contexto de API Key
 const getAI = () => {
-  const apiKey = (process.env.API_KEY as string);
+  // @ts-ignore
+  const apiKey = process.env.API_KEY as string;
   if (!apiKey) throw new Error("API Key no disponible");
   return new GoogleGenAI({ apiKey });
 };
 
 /**
  * Genera audio a partir de texto usando el modelo TTS especializado.
- * Se ha simplificado al máximo para evitar errores de conexión.
  */
 export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
-  const ai = getAI();
-  
-  // Limpieza extrema del texto para el modelo TTS
-  const cleanText = text
-    .substring(0, 3000) // Límite de seguridad
-    .replace(/[#*`_]/g, '') // Eliminar markdown
-    .replace(/\s+/g, ' ')   // Normalizar espacios
-    .trim();
-
-  if (!cleanText) return undefined;
-
   try {
+    const ai = getAI();
+    
+    // Limpieza del texto para el modelo TTS
+    const cleanText = text
+      .substring(0, 3000)
+      .replace(/[#*`_]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) {
+      console.warn("Texto vacío enviado a TTS");
+      return undefined;
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: cleanText }] }],
@@ -33,7 +35,6 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            // Nota: El modelo espera el nombre de la voz exactamente como se define en los guidelines
             prebuiltVoiceConfig: { voiceName },
           },
         },
@@ -41,15 +42,19 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
     });
 
     const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioBase64) {
+      console.error("La respuesta de Gemini no contiene datos de audio.");
+      return undefined;
+    }
     return audioBase64;
   } catch (error) {
-    console.error("Error en la conexión de generación de voz:", error);
+    console.error("Error crítico en la conexión de generación de voz:", error);
     return undefined;
   }
 };
 
 /**
- * Extrae texto de archivos (solo si es estrictamente necesario para PDF/Imágenes)
+ * Extrae texto de archivos.
  */
 export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
   const ai = getAI();
@@ -59,14 +64,14 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: "Extrae el texto de este documento. Solo el texto." }
+          { text: "Extrae el texto de este documento. Devuelve solo el texto extraído sin comentarios adicionales." }
         ]
       }
     });
-    return response.text || "No se pudo extraer texto.";
+    return response.text || "";
   } catch (error) {
-    console.error("Error extrayendo texto:", error);
-    return "Error en la extracción.";
+    console.error("Error extrayendo texto del archivo:", error);
+    return "";
   }
 };
 
@@ -102,18 +107,34 @@ export const decodeAudioData = async (
 export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
-  view.setUint32(0, 0x52494646, false); // "RIFF"
+  
+  // RIFF identifier
+  view.setUint32(0, 0x52494646, false);
+  // RIFF chunk length
   view.setUint32(4, 36 + pcmData.length, true);
-  view.setUint32(8, 0x57415645, false); // "WAVE"
-  view.setUint32(12, 0x666d7420, false); // "fmt "
+  // RIFF type
+  view.setUint32(8, 0x57415645, false);
+  // format chunk identifier
+  view.setUint32(12, 0x666d7420, false);
+  // format chunk length
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
+  // sample format (raw)
+  view.setUint16(20, 1, true);
+  // channel count
+  view.setUint16(22, 1, true);
+  // sample rate
   view.setUint32(24, sampleRate, true);
+  // byte rate (sample rate * block align)
   view.setUint32(28, sampleRate * 2, true);
+  // block align (channel count * bytes per sample)
   view.setUint16(32, 2, true);
+  // bits per sample
   view.setUint16(34, 16, true);
-  view.setUint32(36, 0x64617461, false); // "data"
+  // data chunk identifier
+  view.setUint32(36, 0x64617461, false);
+  // data chunk length
   view.setUint32(40, pcmData.length, true);
-  return new Blob([header, pcmData], { type: 'audio/wav' });
+
+  // Solucionar error de tipo TS mediante cast a any o ArrayBufferView
+  return new Blob([header, pcmData as any], { type: 'audio/wav' });
 };

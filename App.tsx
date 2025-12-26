@@ -60,6 +60,7 @@ const AppContent = () => {
         updateDoc({ progress: prog });
       }, 400);
 
+      // LLAMADA DIRECTA A GENERAR VOZ
       const base64 = await generateSpeech(content, voice);
       
       clearInterval(intervalId);
@@ -85,12 +86,10 @@ const AppContent = () => {
       };
 
       setDocuments(prev => prev.map(d => d.id === id ? updatedDoc : d));
-      setCurrentDocument(updatedDoc);
-      setTimeout(() => navigate('/player'), 300);
-
+      // No navegamos automáticamente para dejar que el usuario vea que se completó
     } catch (err) {
-      clearInterval(intervalId);
-      console.error(err);
+      if (intervalId) clearInterval(intervalId);
+      console.error("Error procesando audio:", err);
       updateDoc({ 
         status: 'error', 
         meta: 'Error de audio. Toca para reintentar.', 
@@ -107,14 +106,18 @@ const AppContent = () => {
     let content = payload.content || "";
     const title = payload.title || "Nuevo Documento";
 
-    // Si hay archivo, extraemos texto primero (paso necesario para tener qué leer)
+    // Si hay archivo, extraemos texto primero
     if (payload.file && !content) {
       setDocuments(prev => [{
-        id, title, content: "", meta: "Extrayendo...", status: 'analyzing', progress: 50,
+        id, title, content: "", meta: "Extrayendo texto...", status: 'analyzing', progress: 50,
         icon: 'sync', iconColor: 'text-primary', bgColor: 'bg-primary/10', voice: payload.voice
       }, ...prev]);
       
       content = await extractTextFromFile(payload.file.base64, payload.file.mime);
+      if (!content) {
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: 'error', meta: 'No se pudo leer el archivo.' } : d));
+        return;
+      }
     }
 
     const newDoc: Document = {
@@ -130,7 +133,14 @@ const AppContent = () => {
       voice: payload.voice
     };
     
-    setDocuments(prev => prev.some(d => d.id === id) ? prev : [newDoc, ...prev]);
+    setDocuments(prev => {
+        const exists = prev.find(d => d.id === id);
+        if (exists) {
+            return prev.map(d => d.id === id ? newDoc : d);
+        }
+        return [newDoc, ...prev];
+    });
+
     processAudioOnly(id, content, payload.voice);
   };
 
