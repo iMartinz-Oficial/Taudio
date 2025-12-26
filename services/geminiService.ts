@@ -1,16 +1,13 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
-// Helper para obtener la instancia de AI
 const getAI = () => {
   // @ts-ignore
   const apiKey = process.env.API_KEY as string;
   return new GoogleGenAI({ apiKey });
 };
 
-/**
- * Extrae texto de un archivo (PDF, Imagen) usando Gemini 3 Flash
- */
 export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
   const ai = getAI();
   try {
@@ -46,11 +43,7 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
       },
     });
 
-    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) {
-      console.warn("La API no devolvió datos de audio.");
-    }
-    return audioData;
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) {
     console.error("Error generating speech:", error);
     return undefined;
@@ -73,7 +66,6 @@ export const decodeAudioData = async (
   sampleRate: number = 24000,
   numChannels: number = 1,
 ): Promise<AudioBuffer> => {
-  // El audio de Gemini TTS es PCM lineal de 16 bits
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
@@ -81,9 +73,45 @@ export const decodeAudioData = async (
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
-      // Normalizar de Int16 (-32768 a 32767) a Float32 (-1.0 a 1.0)
       channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
     }
   }
   return buffer;
+};
+
+/**
+ * Convierte datos PCM (Int16) en un Blob de tipo WAV para descarga
+ */
+export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+
+  // RIFF identifier
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  // File length
+  view.setUint32(4, 36 + pcmData.length, true);
+  // RIFF type
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+  // Format chunk identifier
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  // Format chunk length
+  view.setUint32(16, 16, true);
+  // Sample format (1 is PCM)
+  view.setUint16(20, 1, true);
+  // Channel count
+  view.setUint16(22, 1, true); // Mono
+  // Sample rate
+  view.setUint32(24, sampleRate, true);
+  // Byte rate (sampleRate * channels * bitsPerSample / 8)
+  view.setUint32(28, sampleRate * 1 * 16 / 8, true);
+  // Block align
+  view.setUint16(32, 1 * 16 / 8, true);
+  // Bits per sample
+  view.setUint16(34, 16, true);
+  // Data chunk identifier
+  view.setUint32(36, 0x64617461, false); // "data"
+  // Data chunk length
+  view.setUint32(40, pcmData.length, true);
+
+  return new Blob([header, pcmData], { type: 'audio/wav' });
 };

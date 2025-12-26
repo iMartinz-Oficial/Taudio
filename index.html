@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html class="dark" lang="es">
 <head>
     <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#101922">
@@ -48,16 +49,32 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
+        :root {
+            --app-height: 100vh;
+        }
         body {
-            min-height: 100dvh;
-            overscroll-behavior-y: contain;
+            height: 100vh;
+            height: 100svh;
+            width: 100vw;
             margin: 0;
             padding: 0;
+            overflow: hidden;
             background-color: #101922;
+            position: fixed; /* Evita el rebote de scroll en iOS */
         }
         #root {
-            height: 100dvh;
+            height: 100%;
             width: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Ajuste para áreas seguras en móviles con notch */
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .pt-safe {
+            padding-top: env(safe-area-inset-top);
         }
     </style>
 <script type="importmap">
