@@ -22,7 +22,10 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
   const navigate = useNavigate();
 
   const handleDocumentClick = (doc: Document) => {
-    onSelectDocument(doc);
+    // Solo permitir interacción si no está trabajando
+    if (doc.status !== 'analyzing' && doc.status !== 'generating') {
+      onSelectDocument(doc);
+    }
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -86,13 +89,13 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                  <div 
                    key={doc.id}
                    onClick={() => handleDocumentClick(doc)}
-                   className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : isError ? 'border-red-500/20 bg-red-500/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5'}`}
+                   className={`flex items-center gap-4 px-4 py-4 cursor-pointer rounded-[28px] transition-all border ${isWorking ? 'border-primary/20 bg-primary/5' : isError ? 'border-red-500/20 bg-red-500/5' : 'border-transparent hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.98]'}`}
                  >
                    <div className={`relative size-14 rounded-2xl ${doc.bgColor} flex items-center justify-center shrink-0`}>
                       {isWorking && (
                         <svg className="absolute inset-0 size-full -rotate-90 pointer-events-none">
                           <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="2" className="text-primary/10" />
-                          <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="text-primary transition-all duration-300" />
+                          <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="text-primary transition-all duration-300 ease-out" />
                         </svg>
                       )}
                       
@@ -114,7 +117,7 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
                      </div>
                    </div>
                    
-                   <button onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors">
+                   <button onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors active:scale-90">
                       <span className="material-symbols-outlined text-[22px]">delete</span>
                    </button>
                  </div>
