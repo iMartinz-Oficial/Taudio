@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Document, VoiceName } from '../types';
@@ -26,52 +25,66 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
       try {
         sourceNodeRef.current.stop();
       } catch (e) {
-        // Ya detenido
+        // Ignorar si ya está detenido
       }
       sourceNodeRef.current = null;
     }
     setIsPlaying(false);
   }, []);
 
-  const handleVoiceSelect = (vName: VoiceName) => {
+  const handleVoiceSelect = (vName: VoiceName, e: React.MouseEvent) => {
+    e.stopPropagation();
     onVoiceChange(vName);
-    setIsMenuOpen(false); // Feedback: cerrar menú al elegir
+    setIsMenuOpen(false);
     if (isPlaying) {
       stopPlayback();
     }
   };
 
-  const handlePlayPause = async () => {
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const handlePlayPause = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
     if (isPlaying) {
       stopPlayback();
     } else {
       if (!doc?.content) return;
       
       setIsProcessing(true);
-      const base64Audio = await generateSpeech(doc.content, voice);
-      setIsProcessing(false);
-
-      if (base64Audio) {
+      try {
+        // Inicializar AudioContext en la interacción del usuario
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         }
-        
-        // Reiniciar contexto si estaba suspendido
         if (audioContextRef.current.state === 'suspended') {
           await audioContextRef.current.resume();
         }
 
-        const audioData = decodeBase64Audio(base64Audio);
-        const buffer = await decodeAudioData(audioData, audioContextRef.current);
+        const base64Audio = await generateSpeech(doc.content, voice);
         
-        const source = audioContextRef.current.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioContextRef.current.destination);
-        source.onended = () => setIsPlaying(false);
-        
-        source.start();
-        sourceNodeRef.current = source;
-        setIsPlaying(true);
+        if (base64Audio) {
+          const audioData = decodeBase64Audio(base64Audio);
+          const buffer = await decodeAudioData(audioData, audioContextRef.current);
+          
+          const source = audioContextRef.current.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContextRef.current.destination);
+          source.onended = () => setIsPlaying(false);
+          
+          source.start(0);
+          sourceNodeRef.current = source;
+          setIsPlaying(true);
+        } else {
+          alert("Error al generar el audio. Verifica tu conexión o API Key.");
+        }
+      } catch (error) {
+        console.error("Playback error:", error);
+      } finally {
+        setIsProcessing(false);
       }
     }
   };
@@ -79,36 +92,45 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
   useEffect(() => {
     return () => {
       stopPlayback();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
     };
   }, [stopPlayback]);
 
   if (!doc) {
     return (
-      <div className="flex h-screen items-center justify-center p-6 text-center">
+      <div className="flex h-screen items-center justify-center p-6 text-center bg-background-dark text-white">
         <div className="flex flex-col gap-4">
           <p className="text-xl font-bold">Selecciona un documento para empezar.</p>
-          <button onClick={() => navigate('/')} className="bg-primary text-white px-6 py-2 rounded-xl">Ir a Biblioteca</button>
+          <button onClick={() => navigate('/')} className="bg-primary text-white px-6 py-3 rounded-2xl font-bold">Ir a Biblioteca</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark">
+    <div className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark" onClick={() => setIsMenuOpen(false)}>
       {/* Header */}
-      <div className="flex items-center px-4 py-3 justify-between z-20 relative bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md sticky top-0">
-        <button onClick={() => navigate('/')} className="text-gray-900 dark:text-white flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all">
+      <div className="flex items-center px-4 py-3 justify-between z-30 relative bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md sticky top-0">
+        <button onClick={() => navigate('/')} className="text-gray-900 dark:text-white flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-all">
           <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>keyboard_arrow_down</span>
         </button>
         <h2 className="text-gray-900 dark:text-white text-lg font-bold">Reproductor</h2>
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-all ${isMenuOpen ? 'bg-primary text-white' : 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-white'}`}>
+        <button 
+          onClick={toggleMenu}
+          className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-all ${isMenuOpen ? 'bg-primary text-white' : 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-white'}`}
+        >
           <span className="material-symbols-outlined">settings</span>
         </button>
       </div>
 
-      {/* Menu Dropdown - Configuración de Voces */}
+      {/* Menu Dropdown */}
       {isMenuOpen && (
-        <div className="absolute top-16 right-4 z-50 w-64 origin-top-right animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
+        <div 
+          className="absolute top-16 right-4 z-50 w-64 origin-top-right animate-in fade-in zoom-in-95 duration-200 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="bg-surface-light dark:bg-surface-dark rounded-2xl ring-1 ring-black/5 dark:ring-white/10 overflow-hidden backdrop-blur-xl border border-gray-100 dark:border-white/5">
             <div className="p-4 flex flex-col gap-2">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Voz del narrador</p>
@@ -116,7 +138,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
                 {VOICES.map(v => (
                   <button 
                     key={v.name}
-                    onClick={() => handleVoiceSelect(v.name as VoiceName)}
+                    onClick={(e) => handleVoiceSelect(v.name as VoiceName, e)}
                     className={`flex items-center justify-between px-3 py-3 rounded-xl text-sm transition-all ${voice === v.name ? 'bg-primary text-white font-bold' : 'hover:bg-black/5 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'}`}
                   >
                     <span>{v.label}</span>
@@ -130,10 +152,10 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
       )}
 
       {/* Main Player Area */}
-      <div className="flex-1 flex flex-col px-6 pt-4 pb-28 overflow-y-auto no-scrollbar" onClick={() => setIsMenuOpen(false)}>
+      <div className="flex-1 flex flex-col px-6 pt-4 pb-28 overflow-y-auto no-scrollbar">
         <div className="mb-8 mt-2">
           <div className="w-full aspect-square max-h-[360px] mx-auto bg-surface-light dark:bg-surface-dark rounded-3xl shadow-xl p-6 flex flex-col gap-4 relative overflow-hidden border border-gray-100 dark:border-white/5">
-            <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-primary to-transparent"></div>
+            <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-primary to-transparent pointer-events-none"></div>
             <div 
               className="w-full h-32 rounded-2xl bg-cover bg-center shrink-0 shadow-sm" 
               style={{ backgroundImage: 'url("https://picsum.photos/seed/voice-reader/400/200")' }}
@@ -141,7 +163,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
             <div className="flex-1 overflow-hidden relative">
               <p className="text-gray-400 dark:text-gray-500 text-xs font-bold mb-2 uppercase tracking-widest">Texto del documento</p>
               <div className="text-gray-800 dark:text-gray-100 text-sm leading-relaxed overflow-y-auto h-full max-h-32 no-scrollbar">
-                {doc.content}
+                {doc.content || "Sin contenido para leer."}
               </div>
             </div>
           </div>
@@ -149,11 +171,14 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
 
         <div className="text-center mb-10">
           <h1 className="text-gray-900 dark:text-white text-2xl font-bold truncate px-2">{doc.title}</h1>
-          <div className="flex items-center justify-center gap-2 mt-2">
+          <div className="flex items-center justify-center gap-2 mt-2 h-6">
             {isProcessing ? (
-              <p className="text-primary font-medium text-sm animate-pulse">Generando audio...</p>
+              <p className="text-primary font-medium text-sm animate-pulse flex items-center gap-2">
+                <span className="material-symbols-outlined animate-spin text-sm">sync</span>
+                Generando audio...
+              </p>
             ) : (
-              <p className="text-slate-500 font-medium text-sm">Voz: {VOICES.find(v => v.name === voice)?.label}</p>
+              <p className="text-slate-500 font-medium text-sm">Voz activa: {VOICES.find(v => v.name === voice)?.label}</p>
             )}
           </div>
         </div>
@@ -170,7 +195,7 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
           <button 
             onClick={handlePlayPause}
             disabled={isProcessing}
-            className={`flex items-center justify-center size-20 rounded-full text-white shadow-xl hover:scale-105 active:scale-95 transition-all ${isProcessing ? 'bg-slate-400' : 'bg-primary shadow-primary/30'}`}
+            className={`flex items-center justify-center size-20 rounded-full text-white shadow-xl hover:scale-105 active:scale-95 transition-all ${isProcessing ? 'bg-slate-400 cursor-not-allowed' : 'bg-primary shadow-primary/30'}`}
           >
             {isProcessing ? (
               <span className="material-symbols-outlined animate-spin" style={{ fontSize: '40px' }}>sync</span>
@@ -178,7 +203,10 @@ const PlayerScreen: React.FC<PlayerScreenProps> = ({ document: doc, voice, onVoi
               <span className="material-symbols-outlined fill-current" style={{ fontSize: '48px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
             )}
           </button>
-          <button onClick={stopPlayback} className="flex items-center justify-center size-14 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+          <button 
+            onClick={(e) => { e.stopPropagation(); stopPlayback(); }} 
+            className="flex items-center justify-center size-14 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+          >
             <span className="material-symbols-outlined fill-current" style={{ fontSize: '28px' }}>stop</span>
           </button>
         </div>
