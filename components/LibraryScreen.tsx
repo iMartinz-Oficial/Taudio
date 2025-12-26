@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Document, VoiceName } from '../types';
 import { AI_VOICES } from '../constants';
@@ -24,7 +24,6 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
   const handleDocumentClick = (doc: Document) => {
     if (doc.status === 'ready') {
       onSelectDocument(doc);
-      navigate('/player');
     }
   };
 
@@ -190,7 +189,13 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ documents, onSelectDocume
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest">Librería</span>
         </button>
-        <button onClick={() => documents.length > 0 && handleDocumentClick(documents[0])} className="flex flex-col items-center gap-1.5 text-slate-500">
+        <button onClick={() => {
+            const firstReady = documents.find(d => d.status === 'ready');
+            if (firstReady) {
+              onSelectDocument(firstReady);
+              navigate('/player');
+            }
+          }} className="flex flex-col items-center gap-1.5 text-slate-500">
           <div className="size-12 rounded-2xl hover:bg-white/5 flex items-center justify-center transition-colors">
             <span className="material-symbols-outlined">play_circle</span>
           </div>

@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { HashRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Document, VoiceName } from './types';
 import { INITIAL_DOCUMENTS } from './constants';
 import LibraryScreen from './components/LibraryScreen';
@@ -8,10 +8,11 @@ import PlayerScreen from './components/PlayerScreen';
 import { generateSpeech, decodeBase64Audio, createWavBlob, generateTitleAndSummary, extractTextFromFile } from './services/geminiService';
 import { saveAudio, deleteAudio, getAudio } from './services/storageService';
 
-const App: React.FC = () => {
+const AppContent = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
   const [selectedVoice, setSelectedVoice] = useState<VoiceName>('Zephyr');
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadData = async () => {
@@ -47,20 +48,22 @@ const App: React.FC = () => {
   const handleSelectDocument = (doc: Document) => {
     if (doc.status === 'ready') {
       setCurrentDocument(doc);
+      navigate('/player');
     }
   };
 
   const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, rawContent?: string) => {
-    let currentStepProgress = 0;
+    let activeInterval: any = null;
     
-    // Función para manejar el progreso de cada etapa individualmente
-    const startProgressStage = (speed: number = 5) => {
-      currentStepProgress = 0;
-      const interval = setInterval(() => {
-        currentStepProgress = Math.min(95, currentStepProgress + (Math.random() * speed));
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: currentStepProgress } : d));
-      }, 800);
-      return interval;
+    const updateProgressStage = (stageName: string, status: 'analyzing' | 'generating', speed: number) => {
+      if (activeInterval) clearInterval(activeInterval);
+      let currentProgress = 0;
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: stageName, status, progress: 0 } : d));
+      
+      activeInterval = setInterval(() => {
+        currentProgress = Math.min(96, currentProgress + (Math.random() * speed));
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: currentProgress } : d));
+      }, 600);
     };
 
     try {
@@ -68,50 +71,56 @@ const App: React.FC = () => {
       
       // FASE 1: EXTRACCIÓN
       if (fileData) {
-        const pInterval = startProgressStage(10);
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Extrayendo texto...", status: 'analyzing', progress: 0 } : d));
+        updateProgressStage("Extrayendo texto...", 'analyzing', 12);
         finalContent = await extractTextFromFile(fileData.base64, fileData.mime);
-        clearInterval(pInterval);
+        clearInterval(activeInterval);
         setDocuments(prev => prev.map(d => d.id === id ? { ...d, progress: 100 } : d));
       }
 
       // FASE 2: TÍTULO
-      const tInterval = startProgressStage(15);
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, content: finalContent, meta: "Generando título...", status: 'analyzing', progress: 0 } : d));
+      updateProgressStage("Generando título...", 'analyzing', 18);
       const { title } = await generateTitleAndSummary(finalContent);
-      clearInterval(tInterval);
+      clearInterval(activeInterval);
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, title, progress: 100 } : d));
 
-      // FASE 3: VOZ (La más lenta)
-      const vInterval = startProgressStage(3);
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, meta: "Generando audio...", status: 'generating', progress: 0 } : d));
+      // FASE 3: VOZ
+      updateProgressStage("Generando audio...", 'generating', 4);
       const base64 = await generateSpeech(finalContent, voice);
+      clearInterval(activeInterval);
       
-      if (base64) {
-        const pcmData = decodeBase64Audio(base64);
-        const wavBlob = createWavBlob(pcmData, 24000);
-        await saveAudio(id, wavBlob);
-        
-        const sizeMB = (wavBlob.size / (1024 * 1024)).toFixed(1);
-        
-        clearInterval(vInterval);
-        setDocuments(prev => prev.map(d => 
-          d.id === id ? { 
-            ...d, 
-            meta: `Listo • ${sizeMB} MB`, 
-            icon: 'play_circle',
-            audioSize: `${sizeMB} MB`,
-            status: 'ready',
-            progress: 100,
-            iconColor: 'text-green-500',
-            bgColor: 'bg-green-500/10'
-          } : d
-        ));
-      }
+      if (!base64) throw new Error("No se pudo generar el audio");
+
+      const pcmData = decodeBase64Audio(base64);
+      const wavBlob = createWavBlob(pcmData, 24000);
+      await saveAudio(id, wavBlob);
+      
+      const sizeMB = (wavBlob.size / (1024 * 1024)).toFixed(1);
+      
+      const finalDoc: Document = {
+        id,
+        title,
+        content: finalContent,
+        meta: `Listo • ${sizeMB} MB`, 
+        icon: 'play_circle',
+        audioSize: `${sizeMB} MB`,
+        status: 'ready',
+        progress: 100,
+        iconColor: 'text-green-500',
+        bgColor: 'bg-green-500/10',
+        voice
+      };
+
+      setDocuments(prev => prev.map(d => d.id === id ? finalDoc : d));
+      
+      // AUTO-NAVEGACIÓN AL FINALIZAR
+      setCurrentDocument(finalDoc);
+      navigate('/player');
+
     } catch (err) {
+      if (activeInterval) clearInterval(activeInterval);
       console.error("Proceso IA fallido:", err);
       setDocuments(prev => prev.map(d => 
-        d.id === id ? { ...d, meta: "Error en proceso", status: 'error', icon: 'error', progress: 0 } : d
+        d.id === id ? { ...d, meta: "Error de conexión", status: 'error', icon: 'error', progress: 0 } : d
       ));
     }
   };
@@ -122,7 +131,7 @@ const App: React.FC = () => {
       id,
       title: payload.title || "Nuevo Documento",
       content: payload.content || "",
-      meta: "Esperando...",
+      meta: "Iniciando...",
       progress: 0,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
@@ -144,33 +153,37 @@ const App: React.FC = () => {
   };
 
   return (
-    <HashRouter>
-      <div className="h-full min-h-screen bg-background-light dark:bg-background-dark">
-        <Routes>
-          <Route 
-            path="/" 
-            element={
-              <LibraryScreen 
-                documents={documents} 
-                onSelectDocument={handleSelectDocument} 
-                onAddDocument={handleAddDocument}
-                onDeleteDocument={handleDeleteDocument}
-              />
-            } 
-          />
-          <Route 
-            path="/player" 
-            element={
-              <PlayerScreen 
-                document={currentDocument} 
-                onVoiceChange={setSelectedVoice}
-              />
-            } 
-          />
-        </Routes>
-      </div>
-    </HashRouter>
+    <div className="h-full min-h-screen bg-background-light dark:bg-background-dark">
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            <LibraryScreen 
+              documents={documents} 
+              onSelectDocument={handleSelectDocument} 
+              onAddDocument={handleAddDocument}
+              onDeleteDocument={handleDeleteDocument}
+            />
+          } 
+        />
+        <Route 
+          path="/player" 
+          element={
+            <PlayerScreen 
+              document={currentDocument} 
+              onVoiceChange={setSelectedVoice}
+            />
+          } 
+        />
+      </Routes>
+    </div>
   );
 };
+
+const App = () => (
+  <HashRouter>
+    <AppContent />
+  </HashRouter>
+);
 
 export default App;
