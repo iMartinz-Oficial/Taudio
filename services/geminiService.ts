@@ -1,55 +1,26 @@
 
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
+// Inicialización fresca en cada llamada para evitar problemas de contexto de API Key
 const getAI = () => {
-  // @ts-ignore
-  const apiKey = process.env.API_KEY as string;
-  if (!apiKey) throw new Error("API Key no configurada");
+  const apiKey = (process.env.API_KEY as string);
+  if (!apiKey) throw new Error("API Key no disponible");
   return new GoogleGenAI({ apiKey });
 };
 
-export const generateTitleAndSummary = async (content: string): Promise<{ title: string }> => {
-  const ai = getAI();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Genera un título muy corto (3-5 palabras) para este texto: ${content.substring(0, 500)}. Responde solo con el título.`,
-    });
-    return { title: response.text?.trim().replace(/[*"']/g, '') || "Documento" };
-  } catch (error) {
-    console.error("Error en título:", error);
-    return { title: "Nuevo Taudio" };
-  }
-};
-
-export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
-  const ai = getAI();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          { inlineData: { data: base64Data, mimeType } },
-          { text: "Extrae el texto completo de este archivo de forma fiel." }
-        ]
-      }
-    });
-    return response.text || "";
-  } catch (error) {
-    console.error("Error en extracción:", error);
-    throw error;
-  }
-};
-
+/**
+ * Genera audio a partir de texto usando el modelo TTS especializado.
+ * Se ha simplificado al máximo para evitar errores de conexión.
+ */
 export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<string | undefined> => {
   const ai = getAI();
   
-  // El modelo TTS requiere texto limpio y no demasiado largo en una sola tanda
+  // Limpieza extrema del texto para el modelo TTS
   const cleanText = text
-    .substring(0, 4000) // Límite de seguridad por petición
-    .replace(/[\r\n]+/g, ' ') // Eliminar saltos de línea bruscos
-    .replace(/[^\w\s.,!?;:áéíóúÁÉÍÓÚñÑ]/g, '') // Mantener solo caracteres básicos y españoles
+    .substring(0, 3000) // Límite de seguridad
+    .replace(/[#*`_]/g, '') // Eliminar markdown
+    .replace(/\s+/g, ' ')   // Normalizar espacios
     .trim();
 
   if (!cleanText) return undefined;
@@ -62,21 +33,40 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
+            // Nota: El modelo espera el nombre de la voz exactamente como se define en los guidelines
             prebuiltVoiceConfig: { voiceName },
           },
         },
       },
     });
 
-    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) {
-      console.error("API respondió sin datos de audio");
-      return undefined;
-    }
-    return audioData;
+    const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return audioBase64;
   } catch (error) {
-    console.error("Error en conexión TTS:", error);
+    console.error("Error en la conexión de generación de voz:", error);
     return undefined;
+  }
+};
+
+/**
+ * Extrae texto de archivos (solo si es estrictamente necesario para PDF/Imágenes)
+ */
+export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<string> => {
+  const ai = getAI();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { inlineData: { data: base64Data, mimeType } },
+          { text: "Extrae el texto de este documento. Solo el texto." }
+        ]
+      }
+    });
+    return response.text || "No se pudo extraer texto.";
+  } catch (error) {
+    console.error("Error extrayendo texto:", error);
+    return "Error en la extracción.";
   }
 };
 
@@ -112,18 +102,18 @@ export const decodeAudioData = async (
 export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
-  view.setUint32(0, 0x52494646, false);
+  view.setUint32(0, 0x52494646, false); // "RIFF"
   view.setUint32(4, 36 + pcmData.length, true);
-  view.setUint32(8, 0x57415645, false);
-  view.setUint32(12, 0x666d7420, false);
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+  view.setUint32(12, 0x666d7420, false); // "fmt "
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 1 * 16 / 8, true);
-  view.setUint16(32, 1 * 16 / 8, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
-  view.setUint32(36, 0x64617461, false);
+  view.setUint32(36, 0x64617461, false); // "data"
   view.setUint32(40, pcmData.length, true);
-  return new Blob([header, pcmData] as BlobPart[], { type: 'audio/wav' });
+  return new Blob([header, pcmData], { type: 'audio/wav' });
 };

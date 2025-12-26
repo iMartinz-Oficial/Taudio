@@ -5,7 +5,7 @@ import { Document, VoiceName } from './types';
 import { INITIAL_DOCUMENTS } from './constants';
 import LibraryScreen from './components/LibraryScreen';
 import PlayerScreen from './components/PlayerScreen';
-import { generateSpeech, decodeBase64Audio, createWavBlob, generateTitleAndSummary, extractTextFromFile } from './services/geminiService';
+import { generateSpeech, decodeBase64Audio, createWavBlob, extractTextFromFile } from './services/geminiService';
 import { saveAudio, deleteAudio, getAudio } from './services/storageService';
 
 const AppContent = () => {
@@ -26,10 +26,9 @@ const AppContent = () => {
           return {
             ...doc,
             meta: `Listo • ${sizeMB} MB`,
-            icon: 'play_circle',
             status: 'ready' as const,
-            audioSize: `${sizeMB} MB`,
             progress: 100,
+            icon: 'play_circle',
             iconColor: 'text-green-500',
             bgColor: 'bg-green-500/10'
           };
@@ -42,65 +41,30 @@ const AppContent = () => {
   }, []);
 
   useEffect(() => {
-    if (documents.length > 0) {
-      localStorage.setItem('taudio_docs', JSON.stringify(documents));
-    }
+    localStorage.setItem('taudio_docs', JSON.stringify(documents));
   }, [documents]);
 
-  // Esta función ahora es inteligente: solo hace lo que falta
-  const fullAIProcess = async (id: number, voice: VoiceName, fileData?: { base64: string, mime: string }, initialContent?: string, initialTitle?: string) => {
+  const processAudioOnly = async (id: number, content: string, voice: VoiceName) => {
     let intervalId: any = null;
-    let finalContent = initialContent || "";
-    let finalTitle = initialTitle || "Documento";
-
+    
     const updateDoc = (updates: Partial<Document>) => {
       setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
     };
 
-    const runStage = async (label: string, status: 'analyzing' | 'generating', speed: number, action: () => Promise<any>) => {
-      updateDoc({ meta: label, status, progress: 0 });
-      let stepProgress = 0;
-      intervalId = setInterval(() => {
-        stepProgress = Math.min(98, stepProgress + (Math.random() * speed));
-        updateDoc({ progress: stepProgress });
-      }, 300);
-
-      try {
-        const result = await action();
-        clearInterval(intervalId);
-        updateDoc({ progress: 100 });
-        await new Promise(r => setTimeout(r, 150));
-        return result;
-      } catch (error) {
-        clearInterval(intervalId);
-        throw error;
-      }
-    };
-
     try {
-      // 1. EXTRACCIÓN (Solo si hay archivo y no hay contenido previo)
-      if (fileData && !finalContent) {
-        finalContent = await runStage("Extrayendo texto...", 'analyzing', 15, () => 
-          extractTextFromFile(fileData.base64, fileData.mime)
-        );
-        updateDoc({ content: finalContent });
-      }
-
-      // 2. TÍTULO (Solo si no hay título válido o es el genérico inicial)
-      if (!finalTitle || finalTitle === "Procesando..." || finalTitle === "Documento") {
-        const titleRes = await runStage("Analizando...", 'analyzing', 20, () => 
-          generateTitleAndSummary(finalContent)
-        );
-        finalTitle = titleRes.title;
-        updateDoc({ title: finalTitle });
-      }
-
-      // 3. GENERACIÓN DE VOZ (Siempre si llegamos aquí y no está 'ready')
-      const base64 = await runStage("Generando voz...", 'generating', 5, () => 
-        generateSpeech(finalContent, voice)
-      );
+      updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 0 });
       
-      if (!base64) throw new Error("La API de voz no devolvió datos");
+      let prog = 0;
+      intervalId = setInterval(() => {
+        prog = Math.min(98, prog + Math.random() * 5);
+        updateDoc({ progress: prog });
+      }, 400);
+
+      const base64 = await generateSpeech(content, voice);
+      
+      clearInterval(intervalId);
+      
+      if (!base64) throw new Error("Fallo en la conexión de audio");
 
       const pcmData = decodeBase64Audio(base64);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -108,47 +72,55 @@ const AppContent = () => {
       
       const sizeMB = (wavBlob.size / (1024 * 1024)).toFixed(1);
       
-      const finalDoc: Document = {
-        id,
-        title: finalTitle,
-        content: finalContent,
-        meta: `Listo • ${sizeMB} MB`, 
-        icon: 'play_circle',
-        audioSize: `${sizeMB} MB`,
+      const updatedDoc: Document = {
+        ...(documents.find(d => d.id === id)!),
         status: 'ready',
         progress: 100,
+        meta: `Listo • ${sizeMB} MB`,
+        icon: 'play_circle',
         iconColor: 'text-green-500',
         bgColor: 'bg-green-500/10',
+        audioSize: `${sizeMB} MB`,
         voice
       };
 
-      setDocuments(prev => prev.map(d => d.id === id ? finalDoc : d));
-      
-      // Auto-reproducción si el usuario sigue esperando
-      setCurrentDocument(finalDoc);
-      setTimeout(() => navigate('/player'), 200);
+      setDocuments(prev => prev.map(d => d.id === id ? updatedDoc : d));
+      setCurrentDocument(updatedDoc);
+      setTimeout(() => navigate('/player'), 300);
 
     } catch (err) {
-      console.error("Error en el proceso:", err);
+      clearInterval(intervalId);
+      console.error(err);
       updateDoc({ 
-        meta: "Fallo de conexión. Toca para reintentar", 
         status: 'error', 
-        icon: 'warning', 
-        progress: 0, 
-        iconColor: 'text-red-500', 
-        bgColor: 'bg-red-500/10' 
+        meta: 'Error de audio. Toca para reintentar.', 
+        progress: 0,
+        icon: 'error',
+        iconColor: 'text-red-500',
+        bgColor: 'bg-red-500/10'
       });
-    } finally {
-      if (intervalId) clearInterval(intervalId);
     }
   };
 
   const handleAddDocument = async (payload: { title?: string; content?: string; file?: { base64: string, mime: string }; voice: VoiceName }) => {
     const id = Date.now();
+    let content = payload.content || "";
+    const title = payload.title || "Nuevo Documento";
+
+    // Si hay archivo, extraemos texto primero (paso necesario para tener qué leer)
+    if (payload.file && !content) {
+      setDocuments(prev => [{
+        id, title, content: "", meta: "Extrayendo...", status: 'analyzing', progress: 50,
+        icon: 'sync', iconColor: 'text-primary', bgColor: 'bg-primary/10', voice: payload.voice
+      }, ...prev]);
+      
+      content = await extractTextFromFile(payload.file.base64, payload.file.mime);
+    }
+
     const newDoc: Document = {
       id,
-      title: payload.title || "Procesando...",
-      content: payload.content || "",
+      title,
+      content,
       meta: "Iniciando...",
       progress: 0,
       iconColor: "text-primary",
@@ -158,8 +130,8 @@ const AppContent = () => {
       voice: payload.voice
     };
     
-    setDocuments(prev => [newDoc, ...prev]);
-    fullAIProcess(id, payload.voice, payload.file, payload.content, payload.title);
+    setDocuments(prev => prev.some(d => d.id === id) ? prev : [newDoc, ...prev]);
+    processAudioOnly(id, content, payload.voice);
   };
 
   const handleSelectDocument = (doc: Document) => {
@@ -167,42 +139,35 @@ const AppContent = () => {
       setCurrentDocument(doc);
       navigate('/player');
     } else if (doc.status === 'error') {
-      // REINTENTO INTELIGENTE: Pasa lo que ya tenemos para no repetirlo
-      fullAIProcess(doc.id, doc.voice || 'Zephyr', undefined, doc.content, doc.title);
+      processAudioOnly(doc.id, doc.content || "", doc.voice || 'Zephyr');
     }
+  };
+
+  const handleUpdateTitle = (id: number, newTitle: string) => {
+    setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: newTitle } : d));
   };
 
   const handleDeleteDocument = async (id: number) => {
     setDocuments(prev => prev.filter(d => d.id !== id));
     await deleteAudio(id);
-    if (currentDocument?.id === id) {
-      setCurrentDocument(null);
-    }
+    if (currentDocument?.id === id) setCurrentDocument(null);
   };
 
   return (
     <div className="h-full min-h-screen bg-background-light dark:bg-background-dark">
       <Routes>
-        <Route 
-          path="/" 
-          element={
-            <LibraryScreen 
-              documents={documents} 
-              onSelectDocument={handleSelectDocument} 
-              onAddDocument={handleAddDocument}
-              onDeleteDocument={handleDeleteDocument}
-            />
-          } 
-        />
-        <Route 
-          path="/player" 
-          element={
-            <PlayerScreen 
-              document={currentDocument} 
-              onVoiceChange={setSelectedVoice}
-            />
-          } 
-        />
+        <Route path="/" element={
+          <LibraryScreen 
+            documents={documents} 
+            onSelectDocument={handleSelectDocument} 
+            onAddDocument={handleAddDocument}
+            onDeleteDocument={handleDeleteDocument}
+            onUpdateTitle={handleUpdateTitle}
+          />
+        } />
+        <Route path="/player" element={
+          <PlayerScreen document={currentDocument} onVoiceChange={setSelectedVoice} />
+        } />
       </Routes>
     </div>
   );
