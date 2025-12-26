@@ -31,23 +31,18 @@ export const INITIAL_DOCUMENTS: Document[] = [
         bgColor: "bg-slate-200 dark:bg-slate-800",
         icon: "article",
         content: "La Revolución Francesa fue un conflicto social y político, con diversos periodos de violencia, que convulsionó Francia y, por extensión de sus implicaciones, a otras naciones de Europa que enfrentaban a partidarios y opositores del sistema conocido como el Antiguo Régimen."
-    },
-    {
-        id: 4,
-        title: "Moby Dick.epub",
-        meta: "4.5 MB • 78% Completado",
-        progress: 78,
-        iconColor: "text-orange-600 dark:text-orange-400",
-        bgColor: "bg-orange-100 dark:bg-orange-900/20",
-        icon: "book_2",
-        content: "Llamadme Ismael. Hace unos años —no importa cuánto hace exactamente—, teniendo poco o ningún dinero en el bolsillo, y nada en particular que me interesara en tierra, pensé que me iría a navegar un poco por ahí, para ver la parte acuática del mundo."
     }
 ];
 
-export const VOICES = [
+export const AI_VOICES = [
     { name: 'Kore', label: 'Kore (Juvenil)' },
     { name: 'Puck', label: 'Puck (Enérgico)' },
     { name: 'Charon', label: 'Charon (Sabio)' },
     { name: 'Fenrir', label: 'Fenrir (Profundo)' },
     { name: 'Zephyr', label: 'Zephyr (Cálido)' }
 ];
+
+export const VOICE_MODES = {
+  AI: 'AI',
+  SYSTEM: 'SYSTEM'
+} as const;
