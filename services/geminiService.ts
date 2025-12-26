@@ -3,30 +3,36 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceName } from "../types";
 
 const getAI = () => {
-  // Use process.env.API_KEY directly as required by the Google GenAI SDK coding guidelines
   return new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 };
 
 /**
- * Procesa errores de la API de Gemini para dar feedback útil
+ * Procesa errores de la API de Gemini para dar feedback útil y estructurado.
  */
-const handleApiError = (error: any): string => {
+export const handleApiError = (error: any): { message: string; code: string } => {
   const message = error?.message?.toLowerCase() || "";
   console.error("Detalle técnico del error:", error);
 
-  if (message.includes("api_key_missing")) return "Configura tu API Key";
-  if (message.includes("429") || message.includes("quota")) return "Límite de API agotado";
-  if (message.includes("403") || message.includes("permission")) return "API Key inválida";
-  if (message.includes("content has no parts")) return "El modelo no pudo generar respuesta";
-  if (message.includes("safety")) return "Contenido bloqueado por seguridad";
+  if (message.includes("api_key_invalid") || message.includes("403")) {
+    return { message: "API Key inválida o sin permisos.", code: "AUTH_ERROR" };
+  }
+  if (message.includes("quota") || message.includes("429")) {
+    return { message: "Límite de peticiones alcanzado. Intenta en un momento.", code: "QUOTA_EXCEEDED" };
+  }
+  if (message.includes("safety")) {
+    return { message: "El contenido fue bloqueado por filtros de seguridad.", code: "SAFETY_BLOCK" };
+  }
+  if (message.includes("network") || message.includes("fetch")) {
+    return { message: "Error de conexión. Revisa tu internet.", code: "NETWORK_ERROR" };
+  }
   
-  return "Error de conexión con la IA";
+  return { message: "Ocurrió un error inesperado al procesar la solicitud.", code: "UNKNOWN" };
 };
 
 /**
  * Genera audio a partir de texto usando el modelo TTS especializado.
  */
-export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<{data?: string, error?: string}> => {
+export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephyr'): Promise<{data?: string, error?: string, errorCode?: string}> => {
   try {
     const ai = getAI();
     const cleanText = text
@@ -35,7 +41,7 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
       .replace(/\s+/g, ' ')
       .trim();
 
-    if (!cleanText) return { error: "El texto está vacío" };
+    if (!cleanText) return { error: "El texto está vacío", errorCode: "EMPTY_INPUT" };
 
     const prompt = `Read this text clearly: ${cleanText}`;
 
@@ -53,18 +59,19 @@ export const generateSpeech = async (text: string, voiceName: VoiceName = 'Zephy
     });
 
     const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioBase64) return { error: "La IA no devolvió audio" };
+    if (!audioBase64) return { error: "La IA no devolvió audio", errorCode: "EMPTY_RESPONSE" };
     
     return { data: audioBase64 };
   } catch (error) {
-    return { error: handleApiError(error) };
+    const errInfo = handleApiError(error);
+    return { error: errInfo.message, errorCode: errInfo.code };
   }
 };
 
 /**
  * Extrae texto de archivos.
  */
-export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<{text?: string, error?: string}> => {
+export const extractTextFromFile = async (base64Data: string, mimeType: string): Promise<{text?: string, error?: string, errorCode?: string}> => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
@@ -78,11 +85,12 @@ export const extractTextFromFile = async (base64Data: string, mimeType: string):
     });
     
     const extractedText = response.text;
-    if (!extractedText) return { error: "No se detectó texto en el archivo" };
+    if (!extractedText) return { error: "No se detectó texto en el archivo", errorCode: "NO_TEXT" };
     
     return { text: extractedText };
   } catch (error) {
-    return { error: handleApiError(error) };
+    const errInfo = handleApiError(error);
+    return { error: errInfo.message, errorCode: errInfo.code };
   }
 };
 

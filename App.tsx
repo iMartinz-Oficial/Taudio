@@ -64,7 +64,6 @@ const AppContent = () => {
 
   const handleAuthComplete = async (username: string) => {
     setUser(username);
-    // Intentamos pedir la carpeta inmediatamente al entrar para centralizar el permiso
     try {
       // @ts-ignore
       const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
@@ -83,13 +82,23 @@ const AppContent = () => {
   };
 
   const processAudioOnly = async (id: number, content: string, voice: VoiceName, title: string) => {
+    // Verificar o solicitar carpeta antes de empezar
     if (folderState !== 'granted') {
       try {
-        // @ts-ignore
-        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        await saveFolderHandle(handle);
-        setFolderState('granted');
-      } catch(e) { return; }
+        const handle = await getFolderHandle();
+        if (handle) {
+          const granted = await requestFolderPermission(handle);
+          if (granted) setFolderState('granted');
+          else throw new Error("PERM_DENIED");
+        } else {
+          // @ts-ignore
+          const newHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+          await saveFolderHandle(newHandle);
+          setFolderState('granted');
+        }
+      } catch(e) { 
+        return; 
+      }
     }
 
     const updateDoc = (updates: Partial<Document>) => {
@@ -99,7 +108,10 @@ const AppContent = () => {
     try {
       updateDoc({ status: 'generating', meta: 'Generando voz...', progress: 10 });
       const result = await generateSpeech(content, voice);
-      if (result.error) throw new Error(result.error);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
 
       const pcmData = decodeBase64Audio(result.data!);
       const wavBlob = createWavBlob(pcmData, 24000);
@@ -117,7 +129,15 @@ const AppContent = () => {
         voice
       });
     } catch (err: any) {
-      updateDoc({ status: 'error', meta: 'Error de proceso', progress: 0 });
+      console.error("Error en processAudio:", err);
+      updateDoc({ 
+        status: 'error', 
+        meta: err.message || 'Error inesperado', 
+        progress: 0,
+        icon: 'error',
+        iconColor: 'text-red-500',
+        bgColor: 'bg-red-500/10'
+      });
     }
   };
 
@@ -131,11 +151,13 @@ const AppContent = () => {
             documents={documents} 
             folderState={folderState}
             onLinkFolder={async () => {
-               // @ts-ignore
-               const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-               await saveFolderHandle(handle);
-               setFolderState('granted');
-               syncLibrary();
+               try {
+                 // @ts-ignore
+                 const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                 await saveFolderHandle(handle);
+                 setFolderState('granted');
+                 syncLibrary();
+               } catch(e) {}
             }}
             onGrantPermission={async () => {
                const handle = await getFolderHandle();
@@ -145,15 +167,18 @@ const AppContent = () => {
                }
             }}
             onSelectDocument={(doc) => {
-              if (doc.status === 'ready') { setCurrentDocument(doc); navigate('/player'); }
-              else if (doc.status === 'error' || doc.status === 'analyzing') {
+              if (doc.status === 'ready') { 
+                setCurrentDocument(doc); 
+                navigate('/player'); 
+              } else {
+                // Si es error o analizando, intenta reprocesar
                 processAudioOnly(doc.id, doc.content || "", doc.voice || 'Zephyr', doc.title);
               }
             }} 
             onAddDocument={async (payload) => {
               const id = Date.now();
               const initialDoc: Document = {
-                id, title: payload.title || "Nuevo", content: payload.content, meta: "Procesando...", progress: 5,
+                id, title: payload.title || "Nuevo", content: payload.content, meta: "Preparando...", progress: 5,
                 iconColor: "text-primary", bgColor: "bg-primary/10", icon: "sync", status: 'generating', voice: payload.voice
               };
               setDocuments(prev => [initialDoc, ...prev]);
