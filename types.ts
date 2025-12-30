@@ -1,11 +1,11 @@
 
+
 export interface User {
   username: string;
   isLoggedIn: boolean;
 }
 
-export type VoiceMode = 'AI' | 'SYSTEM';
-
+// Added voiceMode to Document interface to support property usage in constants.ts
 export interface Document {
   id: number;
   title: string;
@@ -16,18 +16,12 @@ export interface Document {
   icon: string;
   content?: string;
   audioSize?: string;
-  status: 'analyzing' | 'generating' | 'ready' | 'error';
+  status: 'generating' | 'ready' | 'error';
   voice?: VoiceName;
-  voiceMode: VoiceMode;
+  voiceMode?: 'AI' | 'SYSTEM';
 }
 
-export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr' | 'System';
-
-export interface FilePayload {
-  base64: string;
-  mime: string;
-  name: string;
-}
+export type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
 
 export interface PlayerState {
   isPlaying: boolean;
