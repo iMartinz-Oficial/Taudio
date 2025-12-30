@@ -11,8 +11,8 @@ export const generateSpeech = async (
   voiceName: VoiceName = 'Zephyr'
 ): Promise<{data?: string, error?: string, errorCode?: string}> => {
   try {
-    // IMPORTANTE: Instancia fresca para usar la clave seleccionada en el diálogo
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    // IMPORTANTE: Instancia fresca para usar la clave seleccionada en el diálogo (process.env.API_KEY)
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const parts: any[] = [];
 
     if (input.file) {
@@ -68,6 +68,7 @@ export const decodeBase64Audio = (base64: string): Uint8Array => {
 export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
+  
   view.setUint32(0, 0x52494646, false); // "RIFF"
   view.setUint32(4, 36 + pcmData.length, true);
   view.setUint32(8, 0x57415645, false); // "WAVE"
@@ -81,5 +82,9 @@ export const createWavBlob = (pcmData: Uint8Array, sampleRate: number = 24000): 
   view.setUint16(34, 16, true);
   view.setUint32(36, 0x64617461, false); // "data"
   view.setUint32(40, pcmData.length, true);
-  return new Blob([header, pcmData], { type: 'audio/wav' });
+
+  // Solución al error de compilación: 
+  // Forzamos el tipo a BlobPart[] para evitar conflictos de SharedArrayBuffer en TS
+  const blobParts: BlobPart[] = [header, pcmData.buffer as ArrayBuffer];
+  return new Blob(blobParts, { type: 'audio/wav' });
 };

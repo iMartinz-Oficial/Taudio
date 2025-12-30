@@ -39,68 +39,68 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
     if ((window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();
     } else {
-      alert("Configuración de API Keys solo disponible en AI Studio.");
+      alert("Configuración de API Keys disponible en AI Studio.");
     }
   };
 
   return (
-    <div className="w-full max-w-xl bg-white dark:bg-surface-dark rounded-[48px] p-8 shadow-2xl relative overflow-hidden border border-white/10">
-      {/* Botón Settings */}
+    <div className="w-full max-w-lg bg-white dark:bg-surface-dark rounded-[40px] p-8 shadow-2xl relative border border-white/5">
+      {/* Botón de Configuración */}
       <button 
         onClick={openSettings}
-        className="absolute top-8 right-8 size-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-primary transition-all active:scale-90"
+        className="absolute top-8 right-8 size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-primary transition-all active:scale-90"
+        title="Cambiar API Key"
       >
-        <span className="material-symbols-outlined">settings</span>
+        <span className="material-symbols-outlined text-xl">settings</span>
       </button>
 
-      {/* Header con Logo */}
-      <div className="flex flex-col items-center mb-10 mt-4">
-        <div className="size-20 bg-primary rounded-[32px] flex items-center justify-center shadow-2xl shadow-primary/30 mb-6">
-          <span className="material-symbols-outlined text-white text-5xl">graphic_eq</span>
+      {/* Identidad de Marca (Logo Taudio) */}
+      <div className="flex flex-col items-center mb-8">
+        <div className="size-16 bg-primary rounded-[24px] flex items-center justify-center shadow-lg shadow-primary/20 mb-4">
+          <span className="material-symbols-outlined text-white text-4xl">graphic_eq</span>
         </div>
-        <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-white">Taudio</h1>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-2">Convertidor Directo</p>
+        <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Taudio</h1>
+        <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mt-1">Convertir & Descargar</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex bg-slate-100 dark:bg-slate-900 rounded-3xl p-1.5 mb-8">
+      {/* Selector de Entrada */}
+      <div className="flex bg-slate-100 dark:bg-slate-900 rounded-2xl p-1 mb-6">
         <button 
           onClick={() => setActiveTab('text')}
-          className={`flex-1 py-4 font-black text-[11px] uppercase tracking-widest rounded-2xl transition-all ${activeTab === 'text' ? 'bg-white dark:bg-surface-dark shadow-md text-primary' : 'text-slate-500'}`}
+          className={`flex-1 py-3 font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all ${activeTab === 'text' ? 'bg-white dark:bg-surface-dark shadow text-primary' : 'text-slate-400'}`}
         >
-          TEXTO MANUAL
+          Escribir Texto
         </button>
         <button 
           onClick={() => setActiveTab('file')}
-          className={`flex-1 py-4 font-black text-[11px] uppercase tracking-widest rounded-2xl transition-all ${activeTab === 'file' ? 'bg-white dark:bg-surface-dark shadow-md text-primary' : 'text-slate-500'}`}
+          className={`flex-1 py-3 font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all ${activeTab === 'file' ? 'bg-white dark:bg-surface-dark shadow text-primary' : 'text-slate-400'}`}
         >
-          SUBIR ARCHIVO
+          Subir Archivo
         </button>
       </div>
 
-      {/* Contenido */}
-      <div className="space-y-6">
+      {/* Área de Trabajo */}
+      <div className="space-y-4">
         {activeTab === 'text' ? (
-          <div className="space-y-4">
+          <>
             <input 
-              placeholder="Título del audio" 
-              className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-2xl px-6 py-5 font-bold outline-none border-2 border-transparent focus:border-primary/30 transition-all text-slate-900 dark:text-white" 
+              placeholder="Título para tu audio" 
+              className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-primary/20 transition-all text-slate-900 dark:text-white" 
               value={title} onChange={e => setTitle(e.target.value)} 
             />
             <textarea 
               placeholder="Escribe el contenido aquí..." 
-              className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-3xl px-6 py-5 min-h-[180px] font-medium outline-none border-2 border-transparent focus:border-primary/30 transition-all resize-none text-slate-900 dark:text-white" 
+              className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-2xl px-5 py-4 min-h-[150px] font-medium outline-none border-2 border-transparent focus:border-primary/20 transition-all resize-none text-slate-900 dark:text-white" 
               value={content} onChange={e => setContent(e.target.value)} 
             />
-          </div>
+          </>
         ) : (
           <div 
             onClick={() => !isGenerating && fileInputRef.current?.click()}
-            className={`w-full aspect-video bg-primary/5 border-4 border-dashed border-primary/20 rounded-[40px] flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-primary/10 ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+            className={`w-full aspect-[16/10] bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-primary/10 ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
           >
-            <span className="material-symbols-outlined text-6xl text-primary mb-4">cloud_upload</span>
-            <p className="text-lg font-black text-slate-900 dark:text-white">Seleccionar Documento</p>
-            <p className="text-[11px] font-bold text-slate-500 uppercase mt-2">PDF, Imagen o TXT</p>
+            <span className="material-symbols-outlined text-5xl text-primary mb-3">upload_file</span>
+            <p className="text-sm font-bold text-slate-900 dark:text-white">Selecciona PDF o Imagen</p>
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -113,7 +113,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
         )}
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl text-red-500 text-xs font-bold text-center animate-pulse">
+          <div className="bg-red-500/10 p-4 rounded-xl text-red-500 text-[10px] font-bold text-center">
             {error}
           </div>
         )}
@@ -121,24 +121,24 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
         <button 
           disabled={isGenerating || (activeTab === 'text' && (!title || !content))}
           onClick={handleSubmit}
-          className="w-full bg-primary text-white font-black py-6 rounded-3xl shadow-2xl shadow-primary/30 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+          className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
               <span className="material-symbols-outlined animate-spin">sync</span>
-              <span>GENERANDO...</span>
+              <span className="text-sm">GENERANDO...</span>
             </>
           ) : (
             <>
               <span className="material-symbols-outlined">download</span>
-              <span>GENERAR Y DESCARGAR</span>
+              <span className="text-sm">GENERAR Y DESCARGAR</span>
             </>
           )}
         </button>
       </div>
 
-      <p className="mt-8 text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest opacity-60">
-        El audio se descargará automáticamente en formato WAV
+      <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest opacity-50">
+        El archivo se guardará automáticamente en tu carpeta de descargas
       </p>
     </div>
   );
