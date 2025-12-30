@@ -1,9 +1,9 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { VoiceName } from '../types';
 
 interface MainScreenProps {
-  onGenerate: (payload: { title: string; content?: string; file?: File; voice: VoiceName }) => void;
+  onGenerate: (payload: { title: string; content?: string; file?: File; voice: VoiceName; useSystemVoice: boolean }, onProgress: (p: number) => void) => void;
   isGenerating: boolean;
   error: string | null;
 }
@@ -12,14 +12,19 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
   const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [progress, setProgress] = useState(0);
   const [selectedVoice] = useState<VoiceName>('Zephyr');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Reset progress when generation starts/ends
+  useEffect(() => {
+    if (!isGenerating) setProgress(0);
+  }, [isGenerating]);
+
   const handleSubmit = () => {
-    if (activeTab === 'text') {
-      if (!title || !content) return;
-      onGenerate({ title, content, voice: selectedVoice });
+    if (activeTab === 'text' && title && content) {
+      onGenerate({ title, content, voice: selectedVoice, useSystemVoice: false }, (p) => setProgress(p));
     }
   };
 
@@ -29,41 +34,23 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
       onGenerate({
         title: file.name.split('.')[0],
         file: file,
-        voice: selectedVoice
-      });
+        voice: selectedVoice,
+        useSystemVoice: false
+      }, (p) => setProgress(p));
       if (e.target) e.target.value = '';
-    }
-  };
-
-  const openSettings = async () => {
-    if ((window as any).aistudio?.openSelectKey) {
-      await (window as any).aistudio.openSelectKey();
-    } else {
-      alert("Configuración de API Keys disponible en AI Studio.");
     }
   };
 
   return (
     <div className="w-full max-w-lg bg-white dark:bg-surface-dark rounded-[40px] p-8 shadow-2xl relative border border-white/5">
-      {/* Botón de Configuración */}
-      <button 
-        onClick={openSettings}
-        className="absolute top-8 right-8 size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-primary transition-all active:scale-90"
-        title="Cambiar API Key"
-      >
-        <span className="material-symbols-outlined text-xl">settings</span>
-      </button>
-
-      {/* Identidad de Marca (Logo Taudio) */}
       <div className="flex flex-col items-center mb-8">
         <div className="size-16 bg-primary rounded-[24px] flex items-center justify-center shadow-lg shadow-primary/20 mb-4">
           <span className="material-symbols-outlined text-white text-4xl">graphic_eq</span>
         </div>
         <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Taudio</h1>
-        <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mt-1">Convertir & Descargar</p>
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mt-1 text-center px-4">Convierte tus resúmenes de estudio en audio gratis</p>
       </div>
 
-      {/* Selector de Entrada */}
       <div className="flex bg-slate-100 dark:bg-slate-900 rounded-2xl p-1 mb-6">
         <button 
           onClick={() => setActiveTab('text')}
@@ -75,21 +62,20 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
           onClick={() => setActiveTab('file')}
           className={`flex-1 py-3 font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all ${activeTab === 'file' ? 'bg-white dark:bg-surface-dark shadow text-primary' : 'text-slate-400'}`}
         >
-          Subir Archivo
+          Subir Documento
         </button>
       </div>
 
-      {/* Área de Trabajo */}
       <div className="space-y-4">
         {activeTab === 'text' ? (
           <>
             <input 
-              placeholder="Título para tu audio" 
+              placeholder="Ej: Resumen de Historia" 
               className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-primary/20 transition-all text-slate-900 dark:text-white" 
               value={title} onChange={e => setTitle(e.target.value)} 
             />
             <textarea 
-              placeholder="Escribe el contenido aquí..." 
+              placeholder="Pega aquí el texto de tu resumen..." 
               className="w-full bg-slate-50 dark:bg-slate-900/50 rounded-2xl px-5 py-4 min-h-[150px] font-medium outline-none border-2 border-transparent focus:border-primary/20 transition-all resize-none text-slate-900 dark:text-white" 
               value={content} onChange={e => setContent(e.target.value)} 
             />
@@ -100,7 +86,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
             className={`w-full aspect-[16/10] bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-primary/10 ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
           >
             <span className="material-symbols-outlined text-5xl text-primary mb-3">upload_file</span>
-            <p className="text-sm font-bold text-slate-900 dark:text-white">Selecciona PDF o Imagen</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white text-center px-6">Sube tu PDF o imagen de estudio (Máx 15 págs)</p>
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -112,8 +98,23 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
           </div>
         )}
 
+        {isGenerating && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <span>Procesando audio...</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-primary h-full transition-all duration-300" 
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {error && (
-          <div className="bg-red-500/10 p-4 rounded-xl text-red-500 text-[10px] font-bold text-center">
+          <div className="bg-red-500/10 p-4 rounded-xl text-red-500 text-[10px] font-bold text-center leading-relaxed">
             {error}
           </div>
         )}
@@ -126,19 +127,20 @@ const MainScreen: React.FC<MainScreenProps> = ({ onGenerate, isGenerating, error
           {isGenerating ? (
             <>
               <span className="material-symbols-outlined animate-spin">sync</span>
-              <span className="text-sm">GENERANDO...</span>
+              <span className="text-sm uppercase tracking-wider">Esto tardará un momento...</span>
             </>
           ) : (
             <>
               <span className="material-symbols-outlined">download</span>
-              <span className="text-sm">GENERAR Y DESCARGAR</span>
+              <span className="text-sm uppercase tracking-wider">GENERAR AUDIO COMPLETO</span>
             </>
           )}
         </button>
       </div>
 
-      <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest opacity-50">
-        El archivo se guardará automáticamente en tu carpeta de descargas
+      <p className="mt-6 text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest opacity-60 leading-relaxed">
+        Ideal para escuchar mientras trabajas. <br/>
+        Modelo Gemini 2.5 TTS - Acceso Gratuito Ilimitado.
       </p>
     </div>
   );
