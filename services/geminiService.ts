@@ -69,6 +69,9 @@ export const createFinalWav = (chunks: Uint8Array[], sampleRate: number = 24000)
   view.setUint32(36, 0x64617461, false); // "data"
   view.setUint32(40, totalLength, true);
 
-  const blobParts: BlobPart[] = [header, ...chunks];
+  // FIX: Casting explícito a BlobPart[] para evitar el error de TS en Vercel.
+  // Esto asegura que TypeScript no confunda los Uint8Array con SharedArrayBuffers,
+  // los cuales no son asignables a BlobPart en entornos con librerías ESNext estrictas.
+  const blobParts: BlobPart[] = [header, ...(chunks as unknown as BlobPart[])];
   return new Blob(blobParts, { type: 'audio/wav' });
 };
