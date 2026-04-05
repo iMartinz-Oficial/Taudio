@@ -6,9 +6,13 @@ import { VoiceName } from "../types";
  * Extrae texto de un archivo usando Gemini Flash (Muy eficiente y gratuito).
  */
 export const extractTextFromFile = async (fileData: string, mimeType: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // @ts-ignore
+  const apiKey = import.meta.env.VITE_API_KEY;
+  if (!apiKey) throw new Error("API key is missing. Please configure VITE_API_KEY in your .env file.");
+  
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.5-flash",
     contents: [{
       parts: [
         { inlineData: { data: fileData, mimeType } },
@@ -23,9 +27,13 @@ export const extractTextFromFile = async (fileData: string, mimeType: string): P
  * Genera un fragmento de audio PCM a partir de un texto corto.
  */
 export const generateAudioChunk = async (text: string, voiceName: VoiceName): Promise<Uint8Array> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // @ts-ignore
+  const apiKey = import.meta.env.VITE_API_KEY;
+  if (!apiKey) throw new Error("API key is missing. Please configure VITE_API_KEY in your .env file.");
+
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-tts",
+    model: "gemini-2.5-flash",
     contents: [{ parts: [{ text }] }],
     config: {
       responseModalities: [Modality.AUDIO],

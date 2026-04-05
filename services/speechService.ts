@@ -1,6 +1,24 @@
-
 import { VoiceName } from "../types";
 import { extractTextFromFile, generateAudioChunk, createFinalWav } from "./geminiService";
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configurar el worker de PDF.js para Vite
+// @ts-ignore
+import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
+const extractTextFromPdf = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item: any) => item.str).join(' ');
+    fullText += pageText + "\n\n";
+  }
+  return fullText.trim();
+};
 
 /**
  * Divide un texto largo en trozos manejables para la API de TTS.
@@ -33,12 +51,16 @@ export const synthesizeSpeech = async (
 
     // 1. Obtener el texto completo
     if (payload.file) {
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(payload.file!);
-      });
-      fullText = await extractTextFromFile(base64, payload.file.type);
+      if (payload.file.type === 'application/pdf') {
+        fullText = await extractTextFromPdf(payload.file);
+      } else {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(payload.file!);
+        });
+        fullText = await extractTextFromFile(base64, payload.file.type);
+      }
     } else {
       fullText = payload.content || "";
     }
