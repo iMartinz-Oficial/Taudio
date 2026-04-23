@@ -1,18 +1,25 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { VoiceName } from "../types";
 
-/**
- * Extrae texto de un archivo usando Gemini Flash (Muy eficiente y gratuito).
- */
+const TTS_API_URL = "https://api.tts.ai/v1/tts";
+
+const voiceMap: Record<VoiceName, string> = {
+  "Zephyr": "af_heart",
+  "Kore": "am_michael",
+  "Puck": "af_sarah",
+  "Charon": "bm_felix",
+  "Fenrir": "bm_daniel",
+};
+
 export const extractTextFromFile = async (fileData: string, mimeType: string): Promise<string> => {
   // @ts-ignore
-  const apiKey = import.meta.env.VITE_API_KEY;
-  if (!apiKey) throw new Error("API key is missing. Please configure VITE_API_KEY in your .env file.");
+  const apiKey = import.meta.env.VITE_TTS_API_KEY || import.meta.env.VITE_API_KEY;
+  if (!apiKey) throw new Error("API key is missing. Please configure VITE_TTS_API_KEY in your .env file.");
   
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-1.5-flash-8b",
     contents: [{
       parts: [
         { inlineData: { data: fileData, mimeType } },
@@ -24,41 +31,42 @@ export const extractTextFromFile = async (fileData: string, mimeType: string): P
 };
 
 /**
- * Genera un fragmento de audio PCM a partir de un texto corto.
+ * Genera un fragmento de audio PCM a partir de un texto curto usando TTS.ai
  */
 export const generateAudioChunk = async (text: string, voiceName: VoiceName): Promise<Uint8Array> => {
   // @ts-ignore
-  const apiKey = import.meta.env.VITE_API_KEY;
-  if (!apiKey) throw new Error("API key is missing. Please configure VITE_API_KEY in your .env file.");
+  const apiKey = import.meta.env.VITE_TTS_API_KEY || import.meta.env.VITE_API_KEY;
+  if (!apiKey) throw new Error("API key is missing. Please configure VITE_TTS_API_KEY in your .env file.");
 
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ parts: [{ text }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName } },
-      },
+  const voiceId = voiceMap[voiceName] || "af_heart";
+  
+  const response = await fetch(TTS_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
     },
+    body: JSON.stringify({
+      text: text,
+      model: "kokoro",
+      voice: voiceId,
+      format: "wav"
+    })
   });
 
-  const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64) throw new Error("No se generó audio para este fragmento.");
-  
-  // Decodificar base64 a Uint8Array (PCM)
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Error generating audio");
   }
-  return bytes;
+
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
 };
 
 /**
  * Crea un archivo WAV completo a partir de múltiples fragmentos PCM.
  */
-export const createFinalWav = (chunks: Uint8Array[], sampleRate: number = 24000): Blob => {
+export const createFinalWav = (chunks: Uint8Array[], sampleRate: number = 22050): Blob => {
   const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
