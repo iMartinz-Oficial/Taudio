@@ -7,6 +7,7 @@ export default defineConfig({
   define: {
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || '')
   },
+  base: './',
   build: {
     outDir: 'dist',
     minify: 'esbuild',
@@ -16,6 +17,11 @@ export default defineConfig({
       input: {
         main: './index.html',
       },
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
+      }
     },
   },
   server: {
