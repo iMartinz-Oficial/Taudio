@@ -1,0 +1,24 @@
+# API Configuration for Vercel Environment Variables
+
+# Vercel Environment Variables Configuration
+# These variables need to be set in your Vercel project dashboard
+
+## Required Variables
+
+# Google Gemini API Key (for document text extraction)
+VITE_API_KEY=AIzaSyBVevh3jK_dUAmleQis-3pOTxjSoSjzaXw
+
+# TTS.AI API Key (for audio synthesis)
+VITE_TTS_API_KEY=sk-tts-3b42fb045b2e4ecdbe982edd30c610bb
+
+## Optional Variables (for future use)
+
+# Voice preferences
+VITE_DEFAULT_VOICE=Kore
+
+# Audio quality settings
+VITE_SAMPLE_RATE=22050
+VITE_CHUNK_SIZE=4000
+
+# Debug mode
+VITE_DEBUG_MODE=false
